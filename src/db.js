@@ -150,3 +150,18 @@ export async function clearSyncQueue() {
   await tx.objectStore('sync_queue').clear();
   await tx.done;
 }
+
+// ── Device fingerprint ───────────────────────────────────────
+
+/**
+ * Return a short device fingerprint, cached in localStorage.
+ * Used to generate unique note IDs when multiple devices share a DB.
+ */
+export function getDeviceFingerprint() {
+  let fp = localStorage.getItem('biji.deviceFingerprint');
+  if (!fp) {
+    fp = Math.random().toString(36).slice(2, 5);
+    localStorage.setItem('biji.deviceFingerprint', fp);
+  }
+  return fp;
+}

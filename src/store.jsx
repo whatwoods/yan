@@ -7,6 +7,7 @@ import {
   getAllNotes, putNote, deleteNote as dbDeleteNote,
   getMeta, setMeta,
   enqueueSync, getSyncQueue, clearSyncQueue,
+  getDeviceFingerprint,
 } from './db.js';
 import { migrate } from './migrate.js';
 
@@ -446,25 +447,18 @@ function ensureCompat(note) {
   return note;
 }
 
-function getDeviceFingerprint() {
-  let fp = localStorage.getItem('biji.deviceFingerprint');
-  if (!fp) {
-    fp = Math.random().toString(36).slice(2, 5);
-    localStorage.setItem('biji.deviceFingerprint', fp);
-  }
-  return fp;
-}
+export const TAG_TO_CATEGORY = {
+  '工作': '工作', '产品': '工作', '首屏': '工作', '决策': '工作',
+  '阅读': '学习', '学习': '学习',
+  '人': '生活', '身体': '生活', '旅行': '生活', '生活': '生活',
+  '待办': '生活', '钱': '生活', '摘抄': '生活',
+  '想法': '想法', '感受': '想法', '随手': '想法',
+  'AI': 'AI', '开发': '开发', '收藏': '收藏',
+  '阿宁': '生活',
+};
 
 function guessCategoryFromTags(tags) {
   if (!tags || tags.length === 0) return '想法';
-  const TAG_TO_CATEGORY = {
-    '工作': '工作', '产品': '工作', '首屏': '工作', '决策': '工作',
-    '阅读': '学习', '学习': '学习',
-    '人': '生活', '身体': '生活', '旅行': '生活', '生活': '生活',
-    '待办': '生活', '钱': '生活', '摘抄': '生活',
-    '想法': '想法', '感受': '想法', '随手': '想法',
-    'AI': 'AI', '开发': '开发', '收藏': '收藏',
-  };
   for (const t of tags) {
     const cat = TAG_TO_CATEGORY[t.label || t];
     if (cat) return cat;

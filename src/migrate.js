@@ -1,46 +1,13 @@
 // migrate.js — Migrate data from localStorage to IndexedDB.
 // Run once on app startup; sets meta.migrated = true so it won't repeat.
 
-import { getDB, putNote, setMeta, getMeta } from './db.js';
+import { getDB, putNote, setMeta, getMeta, getDeviceFingerprint } from './db.js';
 import { generateId } from './note-format.js';
+import { TAG_TO_CATEGORY } from './store.jsx';
 
 const STORAGE_NOTES = 'biji.notes.v1';
 const STORAGE_SETTINGS = 'biji.settings.v1';
 const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
-
-function getDeviceFingerprint() {
-  let fp = localStorage.getItem('biji.deviceFingerprint');
-  if (!fp) {
-    fp = Math.random().toString(36).slice(2, 5);
-    localStorage.setItem('biji.deviceFingerprint', fp);
-  }
-  return fp;
-}
-
-// ── Tag-to-category mapping ──────────────────────────────────
-// Old tags used free-form labels; new model uses exactly one of 7 categories.
-const TAG_TO_CATEGORY = {
-  '工作': '工作',
-  '产品': '工作',
-  '首屏': '工作',
-  '决策': '工作',
-  '阅读': '学习',
-  '学习': '学习',
-  '人': '生活',
-  '身体': '生活',
-  '旅行': '生活',
-  '生活': '生活',
-  '待办': '生活',
-  '钱': '生活',
-  '摘抄': '生活',
-  '想法': '想法',
-  '感受': '想法',
-  '随手': '想法',
-  'AI': 'AI',
-  '开发': '开发',
-  '收藏': '收藏',
-  '阿宁': '生活',
-};
 
 function guessCategory(oldTags) {
   if (!oldTags || oldTags.length === 0) return '想法';
