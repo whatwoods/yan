@@ -26,7 +26,8 @@ export function searchNotes(query) {
   if (!searchIndex || !query?.trim()) return [];
   try {
     return searchIndex.search(query.trim()).map((r) => r.id);
-  } catch {
+  } catch (e) {
+    console.warn('[store] 搜索失败:', e);
     return [];
   }
 }
@@ -133,7 +134,8 @@ export async function processNoteWithAI(note, categories) {
       summary: summary || note.summary,
       ai: summary ? { summary, generated_at: new Date().toISOString(), model: 'ai' } : note.ai,
     };
-  } catch {
+  } catch (e) {
+    console.warn('[store] AI处理失败:', e);
     return null;
   }
 }
@@ -142,7 +144,7 @@ export async function processNoteWithAI(note, categories) {
 
 function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
-  catch { return fallback; }
+  catch (e) { console.warn('[store] 读取本地存储失败:', e); return fallback; }
 }
 function saveJSON(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
@@ -221,7 +223,8 @@ export const Store = {
           if (item.action === 'upsert' && item.data) {
             try {
               await putNote(item.data);
-            } catch {
+            } catch (e) {
+              console.warn('[store] 队列项恢复失败:', e);
               allSucceeded = false;
             }
           }
@@ -254,7 +257,7 @@ export const Store = {
       // Try reading from localStorage (pre-migration or first load)
       try {
         settings = JSON.parse(localStorage.getItem('biji.settings.v1') || 'null');
-      } catch {}
+      } catch (e) { console.warn('[store] 读取本地设置失败:', e); }
     }
     if (!settings) {
       settings = {

@@ -74,7 +74,7 @@ export async function pullNotes(months = 6) {
             const md = await client.getFileContents(file.filename, { format: 'text' });
             const note = deserialize(md, file.filename);
             pulled.push(note);
-          } catch {}
+          } catch (e) { console.warn('[sync] 读取笔记失败:', e.message); }
         }
       }
     } catch {} // dir doesn't exist, skip
@@ -102,7 +102,8 @@ export async function pullCategories() {
   try {
     const data = await client.getFileContents('/biji/categories.json', { format: 'text' });
     return JSON.parse(data);
-  } catch {
+  } catch (e) {
+    console.warn('[sync] 读取分类失败:', e.message);
     return null;
   }
 }
@@ -131,7 +132,7 @@ export async function pullInsights() {
           const text = await client.getFileContents(file.filename, { format: 'text' });
           const name = file.basename.replace(/\.md$/, '');
           result.set(name, text);
-        } catch {}
+        } catch (e) { console.warn('[sync] 读取洞察失败:', e.message); }
       }
     }
   } catch {} // dir doesn't exist
@@ -156,7 +157,8 @@ export async function pullPreferences() {
   try {
     const data = await client.getFileContents('/biji/preferences.md', { format: 'text' });
     return JSON.parse(data);
-  } catch {
+  } catch (e) {
+    console.warn('[sync] 读取偏好失败:', e.message);
     return null;
   }
 }
@@ -229,7 +231,7 @@ export async function syncAll(localNotes, extra = {}) {
           const note = localNotes.find(n => n.id === item.note_id);
           if (note) await pushNote(note);
         }
-      } catch {}
+      } catch (e) { console.warn('[sync] 队列推送失败:', e.message); }
     }
     await clearSyncQueue();
 
