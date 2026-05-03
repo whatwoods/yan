@@ -85,7 +85,7 @@ export function ToastHost({ children }) {
   return (
     <>
       {children}
-      {msg && <div className="toast">{msg}</div>}
+      {msg && <div className="toast" role="status" aria-live="polite">{msg}</div>}
     </>
   );
 }

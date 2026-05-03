@@ -290,7 +290,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}>
         {filtered.length === 0 && (
-          <div style={{
+          <div role="status" style={{
             background: 'var(--paper-light)', border: `1px dashed var(--fold)`,
             borderRadius: 14, padding: '40px 20px', textAlign: 'center',
             fontFamily: T.fontSerif, color: 'var(--ink-mute)',
@@ -387,7 +387,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
 function NoteCard({ note, pad, catColor, onOpen }) {
   const T = TOKENS;
   return (
-    <div onClick={onOpen} style={{
+    <button onClick={onOpen} style={{
       background: 'var(--paper-light)',
       border: `1px solid var(--fold)`,
       borderRadius: 14, padding: pad,
@@ -395,6 +395,7 @@ function NoteCard({ note, pad, catColor, onOpen }) {
       transition: 'transform .12s, box-shadow .12s',
       position: 'relative',
       paddingLeft: catColor ? pad + 6 : pad,
+      textAlign: 'left', width: '100%', font: 'inherit', color: 'inherit',
     }}
     onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(.99)'; }}
     onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
@@ -430,7 +431,7 @@ function NoteCard({ note, pad, catColor, onOpen }) {
           <Tag key={t.label + i} label={t.label} color={t.color} size="sm" />
         ))}
       </div>
-    </div>
+    </button>
   );
 }
 

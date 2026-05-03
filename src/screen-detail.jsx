@@ -251,7 +251,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
       {showCatPicker && (
         <>
           <div className="sheet-mask" onClick={() => setShowCatPicker(false)} />
-          <div className="sheet" style={{ height: 'auto', maxHeight: '60%' }}>
+          <div className="sheet" role="dialog" aria-modal="true" aria-label="选择分类" style={{ height: 'auto', maxHeight: '60%' }}>
             <div className="sheet-grip" />
             <div style={{ padding: '0 24px 24px' }}>
               <div style={{
