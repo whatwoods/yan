@@ -1,24 +1,25 @@
 // 笔记 · service worker — basic offline caching.
-const CACHE = 'biji-v1';
+const CACHE = 'biji-v2';
 const ASSETS = [
   './',
   'index.html',
   'styles.css',
   'manifest.webmanifest',
   'icon.svg',
-  'src/tokens.js',
-  'src/icons.js',
-  'src/store.js',
-  'src/components.js',
-  'src/screen-capture.js',
-  'src/screen-list.js',
-  'src/screen-detail.js',
-  'src/screen-yan.js',
-  'src/screen-settings.js',
-  'src/screen-onboard.js',
-  'src/screen-search.js',
-  'src/screen-tags.js',
-  'src/app.js',
+  'src/tokens.jsx',
+  'src/icons.jsx',
+  'src/store.jsx',
+  'src/components.jsx',
+  'src/screen-capture.jsx',
+  'src/screen-list.jsx',
+  'src/screen-detail.jsx',
+  'src/screen-yan.jsx',
+  'src/screen-settings.jsx',
+  'src/screen-onboard.jsx',
+  'src/screen-search.jsx',
+  'src/screen-tags.jsx',
+  'src/app.jsx',
+  'src/main.jsx',
 ];
 
 self.addEventListener('install', (e) => {
