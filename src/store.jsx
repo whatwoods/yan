@@ -1,8 +1,6 @@
-// store.jsx — IndexedDB-backed notes + settings, plus client-side AI tagging.
+// store.jsx — IndexedDB-backed notes + settings.
 // Migrated from localStorage to IndexedDB (biji-v1) on first run.
 
-import MiniSearch from 'minisearch';
-import { formatRelative } from './tokens.jsx';
 import {
   getAllNotes, putNote, deleteNote as dbDeleteNote,
   getMeta, setMeta,
@@ -10,35 +8,15 @@ import {
   getDeviceFingerprint,
 } from './db.js';
 import { migrate } from './migrate.js';
-
-// ── MiniSearch full-text index ────────────────────────────────
-let searchIndex = null;
-
-export function buildSearchIndex(notes) {
-  searchIndex = new MiniSearch({
-    fields: ['title', 'body'],
-    storeFields: ['id', 'title'],
-    searchOptions: { boost: { title: 3 }, prefix: true },
-  });
-  searchIndex.addAll(notes.map((n) => ({ id: n.id, title: n.title, body: n.body || '' })));
-}
-
-export function searchNotes(query) {
-  if (!searchIndex || !query?.trim()) return [];
-  try {
-    return searchIndex.search(query.trim()).map((r) => r.id);
-  } catch (e) {
-    console.warn('[store] 搜索失败:', e);
-    return [];
-  }
-}
-
-export function rebuildSearchIndex() {
-  searchIndex = null;
-  buildSearchIndex(Store.getNotes());
-}
 import { generateId } from './note-format.js';
-import { classifyNote, extractTagsAndPeople, generateSummary } from './ai.js';
+
+// Re-export from extracted modules so existing consumers keep working
+export { buildSearchIndex, searchNotes, rebuildSearchIndex } from './search.js';
+export { autoTags, autoTitle, autoSummary, extractPeople, processNoteWithAI, askYan } from './ai-tagger.js';
+export { TAG_TO_CATEGORY } from './tag-colors.js';
+
+import { buildSearchIndex } from './search.js';
+import { TAG_TO_CATEGORY } from './tag-colors.js';
 
 const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
 
@@ -53,93 +31,6 @@ export const DEFAULT_CATEGORIES = [
   { name: '开发', color: '茶色', hex: '#8b6f47' },
   { name: '收藏', color: '墨色', hex: '#1f1a14' },
 ];
-
-// ── Tag dictionary — used by the local "AI" tagger ────────────
-// Each tag is a category that maps to triggering keywords.
-// In a production app this would be replaced by an Anthropic API call;
-// here we approximate with a dictionary so the UX still feels alive offline.
-const TAG_DICT = [
-  { label: '工作',   color: 'indigo', kws: ['会议','项目','需求','复盘','上线','排期','okr','汇报','上司','同事','工位','加班','任务','schedule','deadline'] },
-  { label: '产品',   color: 'bamboo', kws: ['产品','设计','原型','线框','用户','流程','首屏','按钮','交互','体验','ux','ui','feature','需求'] },
-  { label: '阅读',   color: 'bamboo', kws: ['书','读','章','页','作者','读到','摘抄','金句','《','》','novel','chapter'] },
-  { label: '人',     color: 'plum',   kws: ['朋友','同事','家人','妈','爸','她','他','哥','姐','妹','弟','聊到','约','见','聚'] },
-  { label: '身体',   color: 'seal',   kws: ['跑步','健身','睡眠','失眠','吃','喝','胃','头疼','感冒','瑜伽','力量','重量','减脂','体重','workout'] },
-  { label: '旅行',   color: 'ochre',  kws: ['旅行','出差','机票','酒店','景点','导航','地图','杭州','北京','上海','京都','东京','日本','美国'] },
-  { label: '想法',   color: 'ink',    kws: ['想到','突然','觉得','或许','也许','也许','idea','灵感','念头','一闪'] },
-  { label: '待办',   color: 'seal',   kws: ['todo','todo:','待办','要做','别忘','记得','下午','明天','周五','周末','下周','下月','买'] },
-  { label: '摘抄',   color: 'ochre',  kws: ['"','"','「','」','——','——','引用','quote'] },
-  { label: '感受',   color: 'plum',   kws: ['开心','难过','焦虑','紧张','压力','放松','害怕','喜欢','讨厌','感觉','心情','emo'] },
-  { label: '学习',   color: 'indigo', kws: ['学','课','视频','教程','笔记','单词','英语','日语','算法','数学','物理','course'] },
-  { label: '钱',     color: 'ochre',  kws: ['花','买','钱','工资','收入','支出','账单','理财','股票','基金','投资'] },
-];
-
-const PEOPLE_HINT = /([一-龥])(姐|哥|弟|妹|姨|叔|爸|妈|总|先生|女士)|@([一-龥\w]+)/g;
-
-// ── AI tagging functions (unchanged) ─────────────────────────
-
-export function autoTags(body) {
-  const text = (body || '').toLowerCase();
-  const found = [];
-  for (const t of TAG_DICT) {
-    if (t.kws.some((k) => text.includes(k.toLowerCase()))) {
-      found.push({ label: t.label, color: t.color });
-    }
-    if (found.length >= 4) break;
-  }
-  if (found.length === 0) found.push({ label: '随手', color: 'ink' });
-  return found;
-}
-
-export function autoTitle(body) {
-  if (!body) return '无字';
-  const firstLine = body.trim().split(/\n/)[0];
-  if (firstLine.length <= 18) return firstLine;
-  // Try to break at the first natural break.
-  const trimmed = firstLine.slice(0, 18).replace(/[，。、：；,.!?]\s*$/, '');
-  return trimmed + '…';
-}
-
-export function autoSummary(body) {
-  if (!body) return '';
-  const compact = body.replace(/\s+/g, ' ').trim();
-  if (compact.length <= 32) return compact;
-  return compact.slice(0, 32) + '…';
-}
-
-export function extractPeople(body) {
-  const set = new Set();
-  let m;
-  PEOPLE_HINT.lastIndex = 0;
-  while ((m = PEOPLE_HINT.exec(body)) !== null) {
-    if (m[3]) set.add(m[3]);
-    else if (m[1] && m[2]) set.add(m[1] + m[2]);
-  }
-  return [...set];
-}
-
-/**
- * Run AI classify/tag/summarize pipeline on a note.
- * Returns a patch object or null (caller should fall back to rule-based).
- */
-export async function processNoteWithAI(note, categories) {
-  try {
-    const [category, tagResult, summary] = await Promise.all([
-      classifyNote(note.body, categories),
-      extractTagsAndPeople(note.body),
-      generateSummary(note.body),
-    ]);
-    return {
-      category: category || note.category || '想法',
-      tags: tagResult.tags.length ? tagResult.tags.map(t => ({ label: t, color: 'ink' })) : note.tags,
-      people: tagResult.people.length ? tagResult.people : note.people,
-      summary: summary || note.summary,
-      ai: summary ? { summary, generated_at: new Date().toISOString(), model: 'ai' } : note.ai,
-    };
-  } catch (e) {
-    console.warn('[store] AI处理失败:', e);
-    return null;
-  }
-}
 
 // ── localStorage helpers (for first-run flag only) ───────────
 
@@ -447,16 +338,6 @@ function ensureCompat(note) {
   return note;
 }
 
-export const TAG_TO_CATEGORY = {
-  '工作': '工作', '产品': '工作', '首屏': '工作', '决策': '工作',
-  '阅读': '学习', '学习': '学习',
-  '人': '生活', '身体': '生活', '旅行': '生活', '生活': '生活',
-  '待办': '生活', '钱': '生活', '摘抄': '生活',
-  '想法': '想法', '感受': '想法', '随手': '想法',
-  'AI': 'AI', '开发': '开发', '收藏': '收藏',
-  '阿宁': '生活',
-};
-
 function guessCategoryFromTags(tags) {
   if (!tags || tags.length === 0) return '想法';
   for (const t of tags) {
@@ -464,32 +345,4 @@ function guessCategoryFromTags(tags) {
     if (cat) return cat;
   }
   return '想法';
-}
-
-// ── chat with 砚 — generates plausible responses based on memory ─────
-export function askYan(question, notes) {
-  const q = question.toLowerCase();
-  const matched = notes.filter((n) => {
-    const hay = (n.title + ' ' + n.body + ' ' + (n.tags || []).map(t => t.label).join(' ')).toLowerCase();
-    return q.split(/\s+/).filter(Boolean).some((w) => hay.includes(w)) ||
-      (n.tags || []).some((t) => q.includes(t.label));
-  }).slice(0, 6);
-
-  if (matched.length === 0) {
-    return {
-      text: '翻完了 ' + notes.length + ' 篇笔记，没找到与此特别相关的。要不你先记一笔，让我有所凭依？',
-      refs: [],
-    };
-  }
-  const tagCounts = {};
-  matched.forEach((n) => (n.tags || []).forEach((t) => {
-    tagCounts[t.label] = (tagCounts[t.label] || 0) + 1;
-  }));
-  const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  const tagLine = topTags.length ? `多与 ${topTags.map(([l]) => `「${l}」`).join('、')} 有关。` : '';
-
-  return {
-    text: `翻了你的 ${notes.length} 篇笔记，找到 ${matched.length} 条相关的。${tagLine}最近一次是${formatRelative(matched[0].createdAt)}：「${matched[0].title}」。`,
-    refs: matched.map((n) => ({ id: n.id, title: n.title, when: formatRelative(n.createdAt) })),
-  };
 }
