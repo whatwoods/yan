@@ -373,7 +373,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         </Section>
 
         {/* Per-task model assignment */}
-        {aiModels.length > 0 && !masterPasswordSet || secretsUnlocked ? (
+        {aiModels.length > 0 && (!masterPasswordSet || secretsUnlocked) ? (
           <Section title="任务模型分配">
             {Object.entries(TASK_LABELS).map(([key, label], idx, arr) => (
               <Row
