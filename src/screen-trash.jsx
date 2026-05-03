@@ -1,6 +1,6 @@
 // screen-trash.jsx — Trash (回收站) screen for soft-deleted notes.
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { ScrHead, showToast } from './components.jsx';

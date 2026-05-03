@@ -1,10 +1,23 @@
-// screen-settings.jsx — Settings page with persona, theme, data sections.
+// screen-settings.jsx — Settings page with persona, theme, data, AI, WebDAV, master password, categories.
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { TOKENS, PERSONAS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, ScrHead } from './components.jsx';
-import { Store } from './store.jsx';
+import { SealStamp, ScrHead, showToast } from './components.jsx';
+import { Store, DEFAULT_CATEGORIES } from './store.jsx';
+import { initWebDAV, testConnection, syncAll } from './sync.js';
+import { encryptSecrets, decryptSecrets } from './crypto.js';
+import { getMeta, setMeta } from './db.js';
+
+// Hardcoded AI providers (ai.js doesn't exist yet)
+const AI_PROVIDERS = [
+  { id: 'anthropic', name: 'Anthropic', defaultEndpoint: 'https://api.anthropic.com' },
+  { id: 'openai', name: 'OpenAI', defaultEndpoint: 'https://api.openai.com/v1' },
+  { id: 'deepseek', name: 'DeepSeek', defaultEndpoint: 'https://api.deepseek.com' },
+  { id: 'custom', name: '自定义', defaultEndpoint: '' },
+];
+
+const META_SALT = 'biji-master-v1';
 
 export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate }) {
   const T = TOKENS, I = ICONS;
@@ -12,9 +25,189 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   const [showPersona, setShowPersona] = useState(false);
   const [showFont, setShowFont] = useState(false);
 
+  // AI config state
+  const [aiConfig, setAiConfig] = useState({ provider: 'anthropic', endpoint: '', apiKey: '' });
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiModels, setAiModels] = useState([]);
+
+  // WebDAV config state
+  const [webdavConfig, setWebdavConfig] = useState({ server: '', username: '', password: '' });
+  const [webdavTesting, setWebdavTesting] = useState(false);
+  const [webdavStatus, setWebdavStatus] = useState(null); // { lastSync, syncing }
+
+  // Master password state
+  const [masterPasswordSet, setMasterPasswordSet] = useState(false);
+  const [showMasterPwSheet, setShowMasterPwSheet] = useState(false);
+
+  // Categories state
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [showCatSheet, setShowCatSheet] = useState(false);
+  const [editingCat, setEditingCat] = useState(null); // null = adding new
+
+  // Load persisted configs from meta on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const [savedAi, savedWebdav, savedMasterPw, savedCats, savedLastSync] = await Promise.all([
+          getMeta('aiConfig'),
+          getMeta('webdavConfig'),
+          getMeta('masterPasswordSet'),
+          getMeta('categories'),
+          getMeta('lastSync'),
+        ]);
+        if (savedAi) setAiConfig(savedAi);
+        if (savedWebdav) {
+          setWebdavConfig(savedWebdav);
+          // Re-init WebDAV client if config exists
+          if (savedWebdav.server && savedWebdav.username) {
+            initWebDAV(savedWebdav);
+          }
+        }
+        if (savedMasterPw) setMasterPasswordSet(true);
+        if (savedCats) setCategories(savedCats);
+        if (savedLastSync) setWebdavStatus({ lastSync: savedLastSync });
+      } catch {}
+    })();
+  }, []);
+
   const deletedCount = useMemo(() =>
     Store.getAllNotesWithDeleted().filter((n) => n.deleted_at).length, []
   );
+
+  // ── AI config handlers ──────────────────────────────────────
+  const saveAiConfig = useCallback(async (config) => {
+    setAiConfig(config);
+    await setMeta('aiConfig', config);
+  }, []);
+
+  const handleAiTest = useCallback(async () => {
+    setAiTesting(true);
+    setAiModels([]);
+    try {
+      // Simple endpoint reachability test
+      const endpoint = aiConfig.endpoint || AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.defaultEndpoint || '';
+      if (!endpoint || !aiConfig.apiKey) {
+        showToast('请填写端点和密钥');
+        return;
+      }
+      // Try a minimal request to list models
+      const res = await fetch(endpoint + '/models', {
+        headers: { 'Authorization': `Bearer ${aiConfig.apiKey}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const models = (data.data || data.models || []).map(m => m.id || m).slice(0, 10);
+        setAiModels(models);
+        showToast('连接成功');
+      } else {
+        showToast(`连接失败: ${res.status}`);
+      }
+    } catch (e) {
+      showToast('连接失败: ' + (e.message || '网络错误'));
+    } finally {
+      setAiTesting(false);
+    }
+  }, [aiConfig]);
+
+  // ── WebDAV config handlers ──────────────────────────────────
+  const saveWebdavConfig = useCallback(async (config) => {
+    setWebdavConfig(config);
+    await setMeta('webdavConfig', config);
+    if (config.server && config.username) {
+      initWebDAV(config);
+    }
+  }, []);
+
+  const handleWebdavTest = useCallback(async () => {
+    setWebdavTesting(true);
+    try {
+      const result = await testConnection(webdavConfig);
+      if (result.ok) {
+        showToast('连接成功');
+      } else {
+        showToast('连接失败: ' + (result.error || '未知错误'));
+      }
+    } catch (e) {
+      showToast('连接失败: ' + e.message);
+    } finally {
+      setWebdavTesting(false);
+    }
+  }, [webdavConfig]);
+
+  const handleSync = useCallback(async () => {
+    if (!webdavConfig.server) {
+      showToast('请先配置 WebDAV');
+      return;
+    }
+    setWebdavStatus(prev => ({ ...prev, syncing: true }));
+    try {
+      initWebDAV(webdavConfig);
+      const allNotes = Store.getAllCachedNotes();
+      const result = await syncAll(allNotes);
+      const now = new Date().toISOString();
+      await setMeta('lastSync', now);
+      setWebdavStatus({ lastSync: now, syncing: false });
+      showToast(`同步完成: ${result.synced} 条`);
+      if (result.conflicts.length > 0) {
+        showToast(`${result.conflicts.length} 条冲突待处理`);
+      }
+    } catch (e) {
+      setWebdavStatus(prev => ({ ...prev, syncing: false }));
+      showToast('同步失败: ' + e.message);
+    }
+  }, [webdavConfig]);
+
+  // ── Master password handlers ────────────────────────────────
+  const handleSetMasterPassword = useCallback(async (password) => {
+    if (password.length < 8) {
+      showToast('密码至少 8 位');
+      return false;
+    }
+    // Test encryption round-trip
+    try {
+      const encrypted = await encryptSecrets({ test: true }, password, META_SALT);
+      const decrypted = await decryptSecrets(encrypted, password, META_SALT);
+      if (!decrypted || !decrypted.test) {
+        showToast('加密验证失败');
+        return false;
+      }
+      await setMeta('masterPasswordSet', true);
+      setMasterPasswordSet(true);
+      setShowMasterPwSheet(false);
+      showToast('主密码已设置');
+      return true;
+    } catch (e) {
+      showToast('设置失败: ' + e.message);
+      return false;
+    }
+  }, []);
+
+  // ── Category handlers ───────────────────────────────────────
+  const saveCategories = useCallback(async (cats) => {
+    setCategories(cats);
+    await setMeta('categories', cats);
+    await Store.saveCategories(cats);
+  }, []);
+
+  const handleSaveCategory = useCallback((catData) => {
+    let updated;
+    if (editingCat !== null && editingCat >= 0) {
+      // Editing existing
+      updated = categories.map((c, i) => i === editingCat ? catData : c);
+    } else {
+      // Adding new
+      updated = [...categories, catData];
+    }
+    saveCategories(updated);
+    setShowCatSheet(false);
+    setEditingCat(null);
+  }, [categories, editingCat, saveCategories]);
+
+  const handleDeleteCategory = useCallback((index) => {
+    if (!confirm(`删除分类「${categories[index].name}」？`)) return;
+    const updated = categories.filter((_, i) => i !== index);
+    saveCategories(updated);
+  }, [categories, saveCategories]);
 
   return (
     <div className="screen paper">
@@ -54,7 +247,151 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
             value={settings.autoTag ? '开' : '关'}
             onClick={() => onChange({ ...settings, autoTag: !settings.autoTag })} />
           <Row icon={<I.bolt size={14} />} label="云端模型"
-            value="本地（离线）" last />
+            value={aiModels.length > 0 ? `${aiModels.length} 个模型` : '本地（离线）'} last />
+        </Section>
+
+        {/* AI Provider */}
+        <Section title="AI 供应商">
+          <Row icon={<I.globe size={14} />} label="供应商"
+            value={AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.name || '未设置'}
+            onClick={() => {
+              const idx = AI_PROVIDERS.findIndex(p => p.id === aiConfig.provider);
+              const next = AI_PROVIDERS[(idx + 1) % AI_PROVIDERS.length];
+              saveAiConfig({ ...aiConfig, provider: next.id, endpoint: next.defaultEndpoint });
+            }} />
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>端点</div>
+            <input
+              type="text"
+              value={aiConfig.endpoint}
+              onChange={(e) => setAiConfig({ ...aiConfig, endpoint: e.target.value })}
+              onBlur={() => saveAiConfig(aiConfig)}
+              placeholder={AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.defaultEndpoint || 'https://...'}
+              style={inputStyle(T)}
+            />
+          </div>
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>API Key</div>
+            <input
+              type="password"
+              value={aiConfig.apiKey}
+              onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+              onBlur={() => saveAiConfig(aiConfig)}
+              placeholder="sk-..."
+              style={inputStyle(T)}
+            />
+          </div>
+          <Row
+            icon={<I.bolt size={14} />}
+            label={aiTesting ? '测试中...' : '测试连接'}
+            value={aiTesting ? '...' : '测试'}
+            onClick={aiTesting ? undefined : handleAiTest}
+          />
+          {aiModels.length > 0 && (
+            <div style={{ padding: '8px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 6, fontFamily: T.fontSerif }}>
+                可用模型 ({aiModels.length})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {aiModels.map((m, i) => (
+                  <span key={i} style={{
+                    padding: '3px 8px', borderRadius: 6,
+                    background: 'var(--paper-deep)', fontSize: 11,
+                    fontFamily: T.fontMono, color: 'var(--ink-soft)',
+                  }}>{m}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </Section>
+
+        {/* WebDAV Sync */}
+        <Section title="WebDAV 同步">
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>服务器</div>
+            <input
+              type="text"
+              value={webdavConfig.server}
+              onChange={(e) => setWebdavConfig({ ...webdavConfig, server: e.target.value })}
+              onBlur={() => saveWebdavConfig(webdavConfig)}
+              placeholder="https://dav.example.com"
+              style={inputStyle(T)}
+            />
+          </div>
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>用户名</div>
+            <input
+              type="text"
+              value={webdavConfig.username}
+              onChange={(e) => setWebdavConfig({ ...webdavConfig, username: e.target.value })}
+              onBlur={() => saveWebdavConfig(webdavConfig)}
+              placeholder="user"
+              style={inputStyle(T)}
+            />
+          </div>
+          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>密码</div>
+            <input
+              type="password"
+              value={webdavConfig.password}
+              onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
+              onBlur={() => saveWebdavConfig(webdavConfig)}
+              placeholder="******"
+              style={inputStyle(T)}
+            />
+          </div>
+          <Row
+            icon={<I.bolt size={14} />}
+            label={webdavTesting ? '测试中...' : '测试连接'}
+            value={webdavTesting ? '...' : '测试'}
+            onClick={webdavTesting ? undefined : handleWebdavTest}
+          />
+          <Row
+            icon={<I.globe size={14} />}
+            label="同步状态"
+            value={webdavStatus?.lastSync
+              ? `上次: ${new Date(webdavStatus.lastSync).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+              : '从未同步'}
+          />
+          <Row
+            icon={<I.send size={14} />}
+            label={webdavStatus?.syncing ? '同步中...' : '立即同步'}
+            value={webdavStatus?.syncing ? '...' : '同步'}
+            onClick={webdavStatus?.syncing ? undefined : handleSync}
+            last
+          />
+        </Section>
+
+        {/* Master Password */}
+        <Section title="主密码">
+          <Row
+            icon={<I.pin size={14} />}
+            label={masterPasswordSet ? '修改主密码' : '设置主密码'}
+            value={masterPasswordSet ? '已设置' : '未设置'}
+            onClick={() => setShowMasterPwSheet(true)}
+            last
+          />
+        </Section>
+
+        {/* Categories */}
+        <Section title="大分类">
+          {categories.map((cat, idx) => (
+            <Row
+              key={cat.name}
+              icon={<span style={{ width: 10, height: 10, borderRadius: '50%', background: cat.hex, display: 'inline-block' }} />}
+              label={cat.name}
+              value={cat.color}
+              onClick={() => { setEditingCat(idx); setShowCatSheet(true); }}
+              last={idx === categories.length - 1}
+            />
+          ))}
+          <Row
+            icon={<I.plus size={14} />}
+            label="添加分类"
+            value="+"
+            onClick={() => { setEditingCat(null); setShowCatSheet(true); }}
+            last
+          />
         </Section>
 
         <Section title="外观">
@@ -85,6 +422,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         }}>笔记 v1.0 · 一本会思考的本子</div>
       </div>
 
+      {/* Bottom sheets */}
       {showPersona && (
         <PersonaSheet current={settings.persona} onPick={(p) => {
           onChange({ ...settings, persona: p });
@@ -97,9 +435,26 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           setShowFont(false);
         }} onClose={() => setShowFont(false)} />
       )}
+      {showMasterPwSheet && (
+        <MasterPasswordSheet
+          isChange={masterPasswordSet}
+          onSubmit={handleSetMasterPassword}
+          onClose={() => setShowMasterPwSheet(false)}
+        />
+      )}
+      {showCatSheet && (
+        <CategorySheet
+          category={editingCat !== null && editingCat >= 0 ? categories[editingCat] : null}
+          onSave={handleSaveCategory}
+          onDelete={editingCat !== null && editingCat >= 0 ? () => { handleDeleteCategory(editingCat); setShowCatSheet(false); setEditingCat(null); } : null}
+          onClose={() => { setShowCatSheet(false); setEditingCat(null); }}
+        />
+      )}
     </div>
   );
 }
+
+// ── Shared UI primitives ───────────────────────────────────────
 
 function Section({ title, children }) {
   const T = TOKENS;
@@ -144,6 +499,17 @@ function Row({ icon, label, value, last, onClick, accent }) {
   );
 }
 
+function inputStyle(T) {
+  return {
+    width: '100%', border: `1px solid var(--fold)`, borderRadius: 8,
+    padding: '8px 10px', fontSize: 13, fontFamily: T.fontMono,
+    background: 'var(--paper-light)', color: 'var(--ink)', outline: 'none',
+    boxSizing: 'border-box',
+  };
+}
+
+// ── Persona sheet ──────────────────────────────────────────────
+
 function PersonaSheet({ current, onPick, onClose }) {
   const T = TOKENS;
   return (
@@ -186,6 +552,8 @@ function PersonaSheet({ current, onPick, onClose }) {
     </>
   );
 }
+
+// ── Font sheet ─────────────────────────────────────────────────
 
 function FontSheet({ current, onPick, onClose }) {
   const T = TOKENS;
@@ -232,3 +600,176 @@ function FontSheet({ current, onPick, onClose }) {
   );
 }
 
+// ── Master password sheet ──────────────────────────────────────
+
+function MasterPasswordSheet({ isChange, onSubmit, onClose }) {
+  const T = TOKENS;
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    if (pw.length < 8) {
+      showToast('密码至少 8 位');
+      return;
+    }
+    if (pw !== pw2) {
+      showToast('两次密码不一致');
+      return;
+    }
+    setSubmitting(true);
+    await onSubmit(pw);
+    setSubmitting(false);
+  }
+
+  return (
+    <>
+      <div className="sheet-mask" onClick={onClose} />
+      <div className="sheet" style={{ height: 'auto', maxHeight: '60%' }}>
+        <div className="sheet-grip" />
+        <div style={{ padding: '0 24px 24px' }}>
+          <div style={{
+            fontSize: 12, color: 'var(--ink-mute)',
+            letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
+            fontFamily: T.fontSerif,
+          }}>{isChange ? '修改主密码' : '设置主密码'}</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 14, fontFamily: T.fontSerif, lineHeight: 1.6 }}>
+            主密码用于加密你的 API 密钥等敏感信息。密码本身不会被存储，请牢记。
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>新密码（至少 8 位）</div>
+            <input
+              type="password"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              placeholder="输入密码"
+              style={inputStyle(T)}
+              autoFocus
+            />
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>确认密码</div>
+            <input
+              type="password"
+              value={pw2}
+              onChange={(e) => setPw2(e.target.value)}
+              placeholder="再次输入"
+              style={inputStyle(T)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn-ghost" onClick={onClose}>取消</button>
+            <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? '...' : '确定'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Category edit/add sheet ────────────────────────────────────
+
+const COLOR_PRESETS = [
+  { name: '竹青', hex: '#5b7a5a' },
+  { name: '群青', hex: '#3d5a7c' },
+  { name: '藤黄', hex: '#c89342' },
+  { name: '梅紫', hex: '#8b4a5e' },
+  { name: '印章红', hex: '#b8443a' },
+  { name: '茶色', hex: '#8b6f47' },
+  { name: '墨色', hex: '#1f1a14' },
+  { name: '靛蓝', hex: '#3a5f8a' },
+  { name: '竹粉', hex: '#d4a0a0' },
+  { name: '松绿', hex: '#4a7a5a' },
+];
+
+function CategorySheet({ category, onSave, onDelete, onClose }) {
+  const T = TOKENS;
+  const [name, setName] = useState(category?.name || '');
+  const [colorName, setColorName] = useState(category?.color || '竹青');
+  const [hex, setHex] = useState(category?.hex || '#5b7a5a');
+
+  function handleColorPick(c) {
+    setColorName(c.name);
+    setHex(c.hex);
+  }
+
+  function handleSave() {
+    if (!name.trim()) {
+      showToast('请输入分类名称');
+      return;
+    }
+    onSave({ name: name.trim(), color: colorName, hex });
+  }
+
+  return (
+    <>
+      <div className="sheet-mask" onClick={onClose} />
+      <div className="sheet" style={{ height: 'auto', maxHeight: '70%' }}>
+        <div className="sheet-grip" />
+        <div style={{ padding: '0 24px 24px' }}>
+          <div style={{
+            fontSize: 12, color: 'var(--ink-mute)',
+            letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
+            fontFamily: T.fontSerif,
+          }}>{category ? '编辑分类' : '添加分类'}</div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>名称</div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="分类名称"
+              style={inputStyle(T)}
+              autoFocus
+            />
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 8, fontFamily: T.fontSerif }}>颜色</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {COLOR_PRESETS.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => handleColorPick(c)}
+                  style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: c.hex,
+                    border: colorName === c.name ? `2.5px solid var(--ink)` : '2px solid transparent',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'border .15s',
+                  }}
+                  title={c.name}
+                >
+                  {colorName === c.name && (
+                    <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 6, fontFamily: T.fontSerif }}>
+              {colorName} · {hex}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
+            <div>
+              {onDelete && (
+                <button
+                  className="btn-ghost"
+                  onClick={onDelete}
+                  style={{ color: 'var(--seal)' }}
+                >删除</button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-ghost" onClick={onClose}>取消</button>
+              <button className="btn-primary" onClick={handleSave}>保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
