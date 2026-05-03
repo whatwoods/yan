@@ -1,7 +1,10 @@
 // crypto.js — Master-password encryption using PBKDF2 + AES-GCM (Web Crypto API).
 // No external dependencies — uses browser-native crypto.subtle.
 
+import { getMeta, setMeta } from './db.js';
+
 const PBKDF2_ITERATIONS = 600000;
+const SALT = 'biji-master-v1';
 
 /**
  * Derive an AES-256-GCM key from a password and salt using PBKDF2.
@@ -52,3 +55,83 @@ export async function decryptSecrets(encryptedBase64, password, salt) {
     return null; // wrong password or corrupted data
   }
 }
+
+// ── SecretsStore — manages encrypted secrets lifecycle ─────────
+
+export const SecretsStore = {
+  _cache: null,   // { apiKey, webdavPassword, ... } in memory while unlocked
+  _password: null, // master password cached for re-encryption during session
+
+  /** Check if master password has been configured. */
+  async isSetup() {
+    return !!(await getMeta('masterPwVerify'));
+  },
+
+  /** Check if secrets are currently decrypted in memory. */
+  isUnlocked() {
+    return this._cache !== null;
+  },
+
+  /**
+   * First-time setup: encrypt current plaintext secrets and store.
+   * @param {string} password - master password
+   * @param {object} secrets - { apiKey, webdavPassword, ... }
+   */
+  async setup(password, secrets) {
+    const verify = await encryptSecrets({ v: 1 }, password, SALT);
+    await setMeta('masterPwVerify', verify);
+    const encrypted = await encryptSecrets(secrets, password, SALT);
+    await setMeta('secrets', encrypted);
+    this._cache = { ...secrets };
+    this._password = password;
+  },
+
+  /**
+   * Unlock secrets with master password.
+   * @returns {boolean} true if password correct and secrets decrypted
+   */
+  async unlock(password) {
+    const verify = await getMeta('masterPwVerify');
+    if (!verify) return false;
+    const check = await decryptSecrets(verify, password, SALT);
+    if (!check || !check.v) return false;
+    const encrypted = await getMeta('secrets');
+    if (!encrypted) { this._cache = {}; this._password = password; return true; }
+    const data = await decryptSecrets(encrypted, password, SALT);
+    if (!data) return false;
+    this._cache = { ...data };
+    this._password = password;
+    return true;
+  },
+
+  /** Lock: clear in-memory cache. */
+  lock() {
+    this._cache = null;
+    this._password = null;
+  },
+
+  /** Get a secret field value. Returns null if locked. */
+  get(field) {
+    return this._cache?.[field] ?? null;
+  },
+
+  /**
+   * Update secrets (re-encrypt with cached password).
+   * @param {object} secrets - full secrets object to persist
+   */
+  async update(secrets) {
+    if (!this._password) return;
+    const encrypted = await encryptSecrets(secrets, this._password, SALT);
+    await setMeta('secrets', encrypted);
+    this._cache = { ...secrets };
+  },
+
+  /** Remove master password and all encrypted secrets. */
+  async clear() {
+    this._cache = null;
+    this._password = null;
+    await setMeta('masterPwVerify', null);
+    await setMeta('secrets', null);
+    await setMeta('masterPasswordSet', null);
+  },
+};

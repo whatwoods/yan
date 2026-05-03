@@ -2,6 +2,7 @@
 // All calls go through chatCompletion() which reads config from IndexedDB.
 
 import { getMeta } from './db.js';
+import { SecretsStore } from './crypto.js';
 
 export const PROVIDERS = [
   { id: 'modelscope', name: '魔搭 ModelScope', endpoint: 'https://api-inference.modelscope.cn/v1' },
@@ -16,7 +17,11 @@ export const PROVIDERS = [
 ];
 
 export async function getAIConfig() {
-  return (await getMeta('aiConfig')) || { provider: null, apiKey: null, endpoint: null, models: [], defaultModel: '' };
+  const config = (await getMeta('aiConfig')) || { provider: null, apiKey: null, endpoint: null, models: [], defaultModel: '' };
+  // If master password is set, API key is stored encrypted — use SecretsStore
+  const secretKey = SecretsStore.get('apiKey');
+  if (secretKey) config.apiKey = secretKey;
+  return config;
 }
 
 export async function getModelAssignment() {

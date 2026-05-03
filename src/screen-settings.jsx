@@ -6,11 +6,9 @@ import { ICONS } from './icons.jsx';
 import { SealStamp, ScrHead, showToast } from './components.jsx';
 import { Store, DEFAULT_CATEGORIES } from './store.jsx';
 import { initWebDAV, testConnection, syncAll } from './sync.js';
-import { encryptSecrets, decryptSecrets } from './crypto.js';
+import { SecretsStore } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
 import { PROVIDERS, fetchModels as aiFetchModels } from './ai.js';
-
-const META_SALT = 'biji-master-v1';
 
 export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate, installPrompt }) {
   const T = TOKENS, I = ICONS;
@@ -31,6 +29,8 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   // Master password state
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
   const [showMasterPwSheet, setShowMasterPwSheet] = useState(false);
+  const [secretsUnlocked, setSecretsUnlocked] = useState(false);
+  const [showUnlockSheet, setShowUnlockSheet] = useState(false);
 
   // Categories state
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -41,22 +41,27 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   useEffect(() => {
     (async () => {
       try {
-        const [savedAi, savedWebdav, savedMasterPw, savedCats, savedLastSync] = await Promise.all([
+        const [savedAi, savedWebdav, savedCats, savedLastSync, hasPw] = await Promise.all([
           getMeta('aiConfig'),
           getMeta('webdavConfig'),
-          getMeta('masterPasswordSet'),
           getMeta('categories'),
           getMeta('lastSync'),
+          SecretsStore.isSetup(),
         ]);
         if (savedAi) setAiConfig(savedAi);
         if (savedWebdav) {
           setWebdavConfig(savedWebdav);
-          // Re-init WebDAV client if config exists
           if (savedWebdav.server && savedWebdav.username) {
             initWebDAV(savedWebdav);
           }
         }
-        if (savedMasterPw) setMasterPasswordSet(true);
+        if (hasPw) {
+          setMasterPasswordSet(true);
+          // Try auto-unlock with cached session (won't work on fresh load, but no harm)
+          if (SecretsStore.isUnlocked()) {
+            setSecretsUnlocked(true);
+          }
+        }
         if (savedCats) setCategories(savedCats);
         if (savedLastSync) setWebdavStatus({ lastSync: savedLastSync });
       } catch {}
@@ -70,8 +75,18 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   // ── AI config handlers ──────────────────────────────────────
   const saveAiConfig = useCallback(async (config) => {
     setAiConfig(config);
-    await setMeta('aiConfig', config);
-  }, []);
+    if (masterPasswordSet && secretsUnlocked) {
+      // Encrypt API key via SecretsStore; store config without it
+      await SecretsStore.update({
+        apiKey: config.apiKey,
+        webdavPassword: SecretsStore.get('webdavPassword') || '',
+      });
+      const { apiKey, ...safe } = config;
+      await setMeta('aiConfig', safe);
+    } else {
+      await setMeta('aiConfig', config);
+    }
+  }, [masterPasswordSet, secretsUnlocked]);
 
   const handleAiTest = useCallback(async () => {
     setAiTesting(true);
@@ -102,11 +117,20 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   // ── WebDAV config handlers ──────────────────────────────────
   const saveWebdavConfig = useCallback(async (config) => {
     setWebdavConfig(config);
-    await setMeta('webdavConfig', config);
+    if (masterPasswordSet && secretsUnlocked) {
+      await SecretsStore.update({
+        apiKey: SecretsStore.get('apiKey') || '',
+        webdavPassword: config.password,
+      });
+      const { password, ...safe } = config;
+      await setMeta('webdavConfig', safe);
+    } else {
+      await setMeta('webdavConfig', config);
+    }
     if (config.server && config.username) {
       initWebDAV(config);
     }
-  }, []);
+  }, [masterPasswordSet, secretsUnlocked]);
 
   const handleWebdavTest = useCallback(async () => {
     setWebdavTesting(true);
@@ -153,23 +177,58 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       showToast('密码至少 8 位');
       return false;
     }
-    // Test encryption round-trip
     try {
-      const encrypted = await encryptSecrets({ test: true }, password, META_SALT);
-      const decrypted = await decryptSecrets(encrypted, password, META_SALT);
-      if (!decrypted || !decrypted.test) {
-        showToast('加密验证失败');
-        return false;
+      // Collect current plaintext secrets
+      const secrets = {
+        apiKey: aiConfig.apiKey || '',
+        webdavPassword: webdavConfig.password || '',
+      };
+      // Encrypt and store via SecretsStore
+      await SecretsStore.setup(password, secrets);
+      // Strip plaintext from stored configs
+      if (aiConfig.apiKey) {
+        const { apiKey, ...safe } = aiConfig;
+        await setMeta('aiConfig', safe);
+      }
+      if (webdavConfig.password) {
+        const { password: _, ...safe } = webdavConfig;
+        await setMeta('webdavConfig', safe);
       }
       await setMeta('masterPasswordSet', true);
       setMasterPasswordSet(true);
+      setSecretsUnlocked(true);
       setShowMasterPwSheet(false);
-      showToast('主密码已设置');
+      showToast('主密码已设置 · 密钥已加密');
       return true;
     } catch (e) {
       showToast('设置失败: ' + e.message);
       return false;
     }
+  }, [aiConfig, webdavConfig]);
+
+  const handleUnlock = useCallback(async (password) => {
+    const ok = await SecretsStore.unlock(password);
+    if (!ok) {
+      showToast('密码错误');
+      return false;
+    }
+    setSecretsUnlocked(true);
+    setShowUnlockSheet(false);
+    // Populate local state with decrypted secrets
+    const key = SecretsStore.get('apiKey');
+    if (key) setAiConfig(prev => ({ ...prev, apiKey: key }));
+    const pw = SecretsStore.get('webdavPassword');
+    if (pw) setWebdavConfig(prev => ({ ...prev, password: pw }));
+    showToast('已解锁');
+    return true;
+  }, []);
+
+  const handleClearMasterPassword = useCallback(async () => {
+    if (!confirm('清除主密码？加密的密钥将同时删除，需要重新输入 API Key。')) return;
+    await SecretsStore.clear();
+    setMasterPasswordSet(false);
+    setSecretsUnlocked(false);
+    showToast('主密码已清除');
   }, []);
 
   // ── Category handlers ───────────────────────────────────────
@@ -242,56 +301,63 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
 
         {/* AI Provider */}
         <Section title="AI 供应商">
-          <Row icon={<I.globe size={14} />} label="供应商"
-            value={PROVIDERS.find(p => p.id === aiConfig.provider)?.name || '未设置'}
-            onClick={() => {
-              const idx = PROVIDERS.findIndex(p => p.id === aiConfig.provider);
-              const next = PROVIDERS[(idx + 1) % PROVIDERS.length];
-              saveAiConfig({ ...aiConfig, provider: next.id, endpoint: next.defaultEndpoint });
-            }} />
-          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>端点</div>
-            <input
-              type="text"
-              value={aiConfig.endpoint}
-              onChange={(e) => setAiConfig({ ...aiConfig, endpoint: e.target.value })}
-              onBlur={() => saveAiConfig(aiConfig)}
-              placeholder={PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || 'https://...'}
-              style={inputStyle(T)}
-            />
-          </div>
-          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>API Key</div>
-            <input
-              type="password"
-              value={aiConfig.apiKey}
-              onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-              onBlur={() => saveAiConfig(aiConfig)}
-              placeholder="sk-..."
-              style={inputStyle(T)}
-            />
-          </div>
-          <Row
-            icon={<I.bolt size={14} />}
-            label={aiTesting ? '测试中...' : '测试连接'}
-            value={aiTesting ? '...' : '测试'}
-            onClick={aiTesting ? undefined : handleAiTest}
-          />
-          {aiModels.length > 0 && (
-            <div style={{ padding: '8px 14px' }}>
-              <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 6, fontFamily: T.fontSerif }}>
-                可用模型 ({aiModels.length})
+          {masterPasswordSet && !secretsUnlocked ? (
+            <Row icon={<I.pin size={14} />} label="密钥已加密"
+              value="点击解锁" onClick={() => setShowUnlockSheet(true)} last />
+          ) : (
+            <>
+              <Row icon={<I.globe size={14} />} label="供应商"
+                value={PROVIDERS.find(p => p.id === aiConfig.provider)?.name || '未设置'}
+                onClick={() => {
+                  const idx = PROVIDERS.findIndex(p => p.id === aiConfig.provider);
+                  const next = PROVIDERS[(idx + 1) % PROVIDERS.length];
+                  saveAiConfig({ ...aiConfig, provider: next.id, endpoint: next.endpoint });
+                }} />
+              <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>端点</div>
+                <input
+                  type="text"
+                  value={aiConfig.endpoint}
+                  onChange={(e) => setAiConfig({ ...aiConfig, endpoint: e.target.value })}
+                  onBlur={() => saveAiConfig(aiConfig)}
+                  placeholder={PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || 'https://...'}
+                  style={inputStyle(T)}
+                />
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {aiModels.map((m, i) => (
-                  <span key={i} style={{
-                    padding: '3px 8px', borderRadius: 6,
-                    background: 'var(--paper-deep)', fontSize: 11,
-                    fontFamily: T.fontMono, color: 'var(--ink-soft)',
-                  }}>{m}</span>
-                ))}
+              <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>API Key</div>
+                <input
+                  type="password"
+                  value={aiConfig.apiKey}
+                  onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                  onBlur={() => saveAiConfig(aiConfig)}
+                  placeholder="sk-..."
+                  style={inputStyle(T)}
+                />
               </div>
-            </div>
+              <Row
+                icon={<I.bolt size={14} />}
+                label={aiTesting ? '测试中...' : '测试连接'}
+                value={aiTesting ? '...' : '测试'}
+                onClick={aiTesting ? undefined : handleAiTest}
+              />
+              {aiModels.length > 0 && (
+                <div style={{ padding: '8px 14px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 6, fontFamily: T.fontSerif }}>
+                    可用模型 ({aiModels.length})
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {aiModels.map((m, i) => (
+                      <span key={i} style={{
+                        padding: '3px 8px', borderRadius: 6,
+                        background: 'var(--paper-deep)', fontSize: 11,
+                        fontFamily: T.fontMono, color: 'var(--ink-soft)',
+                      }}>{m}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </Section>
 
@@ -357,10 +423,18 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           <Row
             icon={<I.pin size={14} />}
             label={masterPasswordSet ? '修改主密码' : '设置主密码'}
-            value={masterPasswordSet ? '已设置' : '未设置'}
+            value={masterPasswordSet ? (secretsUnlocked ? '已解锁' : '已锁定') : '未设置'}
             onClick={() => setShowMasterPwSheet(true)}
-            last
           />
+          {masterPasswordSet && (
+            <Row
+              icon={<I.trash size={14} />}
+              label="清除主密码"
+              value="删除加密"
+              onClick={handleClearMasterPassword}
+              last
+            />
+          )}
         </Section>
 
         {/* Categories */}
@@ -454,6 +528,12 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           isChange={masterPasswordSet}
           onSubmit={handleSetMasterPassword}
           onClose={() => setShowMasterPwSheet(false)}
+        />
+      )}
+      {showUnlockSheet && (
+        <UnlockSheet
+          onSubmit={handleUnlock}
+          onClose={() => setShowUnlockSheet(false)}
         />
       )}
       {showCatSheet && (
@@ -676,6 +756,57 @@ function MasterPasswordSheet({ isChange, onSubmit, onClose }) {
             <button className="btn-ghost" onClick={onClose}>取消</button>
             <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
               {submitting ? '...' : '确定'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Unlock sheet ───────────────────────────────────────────────
+
+function UnlockSheet({ onSubmit, onClose }) {
+  const T = TOKENS;
+  const [pw, setPw] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    if (!pw) return;
+    setSubmitting(true);
+    await onSubmit(pw);
+    setSubmitting(false);
+  }
+
+  return (
+    <>
+      <div className="sheet-mask" onClick={onClose} />
+      <div className="sheet" style={{ height: 'auto', maxHeight: '50%' }}>
+        <div className="sheet-grip" />
+        <div style={{ padding: '0 24px 24px' }}>
+          <div style={{
+            fontSize: 12, color: 'var(--ink-mute)',
+            letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
+            fontFamily: T.fontSerif,
+          }}>解锁密钥</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 14, fontFamily: T.fontSerif, lineHeight: 1.6 }}>
+            输入主密码以解密 API 密钥。
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <input
+              type="password"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              placeholder="主密码"
+              style={inputStyle(T)}
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn-ghost" onClick={onClose}>取消</button>
+            <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? '...' : '解锁'}
             </button>
           </div>
         </div>
