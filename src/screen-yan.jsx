@@ -1,7 +1,7 @@
 // screen-yan.jsx — 砚: insights main + chat overlay (FAB).
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { TOKENS } from './tokens.jsx';
+import { TOKENS, PERSONAS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
@@ -10,10 +10,13 @@ import { getMeta, setMeta } from './db.js';
 import { Store } from './store.jsx';
 import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCuratorSuggestion, rejectCuratorSuggestion } from './curator.js';
 import { askYanRAG } from './rag.js';
+import { downloadElementLongScreenshot } from './export-screenshot.js';
 
-export function YanScreen({ notes, persona }) {
+export function YanScreen({ notes, persona, personaKey, onPersonaChange, onNavigate }) {
   const T = TOKENS, I = ICONS;
   const [chatOpen, setChatOpen] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const insightExportRef = useRef(null);
   const [categories, setCategories] = useState([]);
   const [existingTags, setExistingTags] = useState([]);
 
@@ -27,10 +30,22 @@ export function YanScreen({ notes, persona }) {
     setExistingTags(Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k]) => k));
   }, [notes]);
 
+  const handleExport = useCallback(async () => {
+    setShowMenu(false);
+    try {
+      await downloadElementLongScreenshot(insightExportRef.current, {
+        personaName: persona.name,
+      });
+    } catch (err) {
+      console.error('[yan] 导出长图失败:', err);
+      alert('导出长图失败，请稍后重试');
+    }
+  }, [persona.name]);
+
   return (
     <div className="screen paper">
       {/* Header */}
-      <div className="scr-head" style={{ paddingBottom: 12, borderBottom: `1px solid var(--fold)`, background: 'var(--paper-light)' }}>
+      <div className="scr-head" style={{ paddingBottom: 12, borderBottom: `1px solid var(--fold)`, background: 'var(--paper-light)', position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <SealStamp size={36} text={persona.mark} color={persona.color} />
           <div>
@@ -40,10 +55,46 @@ export function YanScreen({ notes, persona }) {
             </div>
           </div>
         </div>
-        <button className="icon-btn" aria-label="更多"><I.more size={20} /></button>
+        <div style={{ position: 'relative' }}>
+          <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} aria-label="更多"><I.more size={20} /></button>
+          {showMenu && (
+            <div style={{
+              position: 'absolute', top: 44, right: 0,
+              background: 'var(--paper-light)', border: `1px solid var(--fold)`,
+              borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-deep)',
+              zIndex: 20, minWidth: 200,
+            }}>
+              {/* Persona row */}
+              <div style={{ display: 'flex', gap: 6, padding: '6px 8px', justifyContent: 'center' }}>
+                {Object.entries(PERSONAS).map(([id, p]) => (
+                  <button key={id} onClick={() => { onPersonaChange?.(id); setShowMenu(false); }}
+                    style={{
+                      background: 'transparent', border: `2px solid ${personaKey === id ? p.color : 'transparent'}`,
+                      borderRadius: 10, padding: 4, cursor: 'pointer',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                      opacity: personaKey === id ? 1 : .55,
+                      transition: 'opacity .15s, border-color .15s',
+                    }}>
+                    <SealStamp size={28} text={p.mark} color={p.color} />
+                    <span style={{ fontSize: 9, color: 'var(--ink-mute)', fontFamily: T.fontSerif }}>{p.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ height: 1, background: 'var(--fold)', margin: '4px 8px' }} />
+              {/* Actions */}
+              <button onClick={handleExport} style={menuItem(T)}>
+                <I.clip size={14} /> 导出洞察长图
+              </button>
+              <button onClick={() => { onNavigate?.('settings'); setShowMenu(false); }} style={menuItem(T)}>
+                <I.settings size={14} /> 设置
+              </button>
+            </div>
+          )}
+        </div>
+        {showMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 19 }} onClick={() => setShowMenu(false)} />}
       </div>
 
-      <YanInsightBody notes={notes} persona={persona} categories={categories} existingTags={existingTags} />
+      <YanInsightBody notes={notes} persona={persona} categories={categories} existingTags={existingTags} exportRef={insightExportRef} />
 
       {/* FAB to open chat */}
       {!chatOpen && (
@@ -95,7 +146,7 @@ export function YanScreen({ notes, persona }) {
   );
 }
 
-function YanInsightBody({ notes, persona, categories }) {
+function YanInsightBody({ notes, persona, categories, exportRef }) {
   const T = TOKENS, I = ICONS;
 
   const stats = useMemo(() => computeStats(notes), [notes]);
@@ -188,7 +239,7 @@ function YanInsightBody({ notes, persona, categories }) {
   }, []);
 
   return (
-    <div className="scroll" style={{ flex: 1, padding: '14px 16px 100px' }}>
+    <div ref={exportRef} className="scroll" data-export-region="yan-insights" style={{ flex: 1, padding: '14px 16px 100px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <span className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
           本月 · {stats.monthLabel}
@@ -653,3 +704,12 @@ function computeStats(notes) {
   };
 }
 
+function menuItem(T) {
+  return {
+    background: 'transparent', border: 'none',
+    padding: '8px 12px', borderRadius: 8,
+    fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink)',
+    display: 'flex', alignItems: 'center', gap: 8,
+    cursor: 'pointer', textAlign: 'left', width: '100%',
+  };
+}

@@ -281,6 +281,8 @@ html, body {
   padding: calc(14px + var(--safe-top)) calc(20px + var(--safe-right)) 8px calc(20px + var(--safe-left));
   display: flex; align-items: center; justify-content: space-between;
   flex-shrink: 0;
+  position: relative;
+  z-index: 30;
 }
 
 /* Animations */

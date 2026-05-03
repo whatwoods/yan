@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.2",
+    "html2canvas": "^1.4.1",
     "idb": "^8.0.0",
     "marked": "^15.0.0",
     "minisearch": "^7.1.0",

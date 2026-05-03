@@ -243,7 +243,13 @@ export function App() {
             />
           )}
           {route === 'yan' && (
-            <YanScreen notes={notes} persona={persona} />
+            <YanScreen
+              notes={notes}
+              persona={persona}
+              personaKey={settings.persona}
+              onPersonaChange={(p) => setSettings({ ...settings, persona: p })}
+              onNavigate={setRoute}
+            />
           )}
           {route === 'settings' && (
             <SettingsScreen
