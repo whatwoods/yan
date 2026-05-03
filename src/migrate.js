@@ -1,7 +1,7 @@
 // migrate.js — Migrate data from localStorage to IndexedDB.
 // Run once on app startup; sets meta.migrated = true so it won't repeat.
 
-import { getDB, putNote, setMeta, getMeta, getDeviceFingerprint } from './db.js';
+import { getDB, putNote, setMeta, getMeta } from './db.js';
 import { generateId } from './note-format.js';
 import { TAG_TO_CATEGORY } from './store.jsx';
 
@@ -87,7 +87,7 @@ function convertNote(old) {
 
   return {
     // Keep old id if it exists; otherwise generate a new-format one
-    id: old.id || generateId(getDeviceFingerprint()),
+    id: old.id || generateId(),
     created: createdISO,
     modified: createdISO,
     kind: old.kind || 'text',

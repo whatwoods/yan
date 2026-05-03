@@ -51,7 +51,7 @@ function seedNotes() {
 
   return [
     {
-      id: generateId('s01'), kind: 'text',
+      id: generateId(), kind: 'text',
       created: ts, modified: ts,
       title: '欢迎使用砚',
       body: '砚是一本会自己整理的本子。记下即整理，不用管标签和分类。\n\n**怎么用：**\n\n1. 点底部「记」，随手写下任何想法\n2. 砚会自动分类、打标签、写摘要\n3. 在「本」页按分类和标签翻阅\n4. 点「砚」页的「问砚」，用自然语言搜笔记\n\n**进阶：**\n\n- 去「设置」配 AI 供应商，砚就能真正活过来\n- 配 WebDAV，笔记自动同步到你的网盘\n- 设主密码，让 API Key 在多设备间安全同步\n\n这条笔记可以删掉。去记你的第一笔吧。',
@@ -196,7 +196,7 @@ export const Store = {
   async addNote(note) {
     const now = new Date().toISOString();
     const fullNote = {
-      id: note.id || generateId(getDeviceFingerprint()),
+      id: note.id || generateId(),
       created: note.created || now,
       modified: now,
       kind: note.kind || 'text',
