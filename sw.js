@@ -25,7 +25,7 @@ self.addEventListener('fetch', (e) => {
   // Only handle same-origin requests
   if (url.origin !== location.origin) {
     // Network-first for fonts
-    if (url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
+    if (url.hostname.includes('fonts.font.im') || url.hostname.includes('gstatic.font.im') || url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
       e.respondWith(
         fetch(e.request).then((r) => {
           const clone = r.clone();
