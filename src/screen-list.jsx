@@ -17,22 +17,36 @@ const BUFFER = 6;
 
 function useVirtualList(flatItems, containerRef, itemHeight) {
   const [range, setRange] = useState({ start: 0, end: 30 });
+  const rafRef = useRef(null);
+  const prevRangeRef = useRef({ start: 0, end: 30 });
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const onScroll = () => {
+    const calcRange = () => {
       const scrollTop = el.scrollTop;
       const viewH = el.clientHeight;
       const start = Math.max(0, Math.floor(scrollTop / itemHeight) - BUFFER);
       const end = Math.min(flatItems.length, Math.ceil((scrollTop + viewH) / itemHeight) + BUFFER);
-      setRange({ start, end });
+      const prev = prevRangeRef.current;
+      if (start !== prev.start || end !== prev.end) {
+        prevRangeRef.current = { start, end };
+        setRange({ start, end });
+      }
     };
 
-    onScroll();
+    const onScroll = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(calcRange);
+    };
+
+    calcRange(); // initial
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, [flatItems.length, itemHeight, containerRef]);
 
   return range;
