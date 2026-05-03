@@ -6,6 +6,28 @@ import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag, showToast } from './components.jsx';
 import { Store } from './store.jsx';
+import { getAIConfig } from './ai.js';
+
+// Photo compression: resize to max 1920px, JPEG 85%
+async function compressPhoto(file) {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((r) => { img.onload = r; img.src = url; });
+  const maxDim = 1920;
+  let w = img.width, h = img.height;
+  if (w > maxDim || h > maxDim) {
+    const ratio = Math.min(maxDim / w, maxDim / h);
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  URL.revokeObjectURL(url);
+  return new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+}
+
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
 
 export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
   const T = TOKENS, I = ICONS;
@@ -34,6 +56,10 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
     return () => clearInterval(id);
   }, [mode]);
 
+  // Track if we're using MediaRecorder fallback (for iOS)
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
   function startRecording() {
     setMode('recording');
     setRecordingStart(Date.now());
@@ -61,16 +87,74 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
       try { r.start(); } catch {}
       recRef.current = r;
     } else {
-      // No speech API — show a "录音中" placeholder, user types/edits after stop.
-      showToast('此浏览器无语音识别 · 已记录时长');
+      // Fallback: use MediaRecorder to capture audio for Whisper upload
+      showToast('正在录音 · 结束后将尝试转写');
+      audioChunksRef.current = [];
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        const mr = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+        mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+        mr.start();
+        mediaRecorderRef.current = mr;
+      }).catch(() => {
+        showToast('无法访问麦克风');
+        setMode('idle');
+      });
     }
   }
 
-  function stopRecording() {
+  async function stopRecording() {
     if (recRef.current) {
       try { recRef.current.stop(); } catch {}
       recRef.current = null;
     }
+
+    // MediaRecorder fallback → Whisper
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      const mr = mediaRecorderRef.current;
+      const chunks = audioChunksRef.current;
+      await new Promise((r) => {
+        mr.onstop = r;
+        mr.stop();
+        mr.stream.getTracks().forEach((t) => t.stop());
+      });
+      mediaRecorderRef.current = null;
+
+      if (chunks.length > 0) {
+        setInterim('正在转写…');
+        try {
+          const config = await getAIConfig();
+          const endpoint = config.endpoint || '';
+          const apiKey = config.apiKey || '';
+          if (endpoint && apiKey) {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const form = new FormData();
+            form.append('file', blob, 'recording.webm');
+            form.append('model', 'whisper-1');
+            form.append('language', 'zh');
+            const baseUrl = endpoint.replace(/\/v1\/?$/, '');
+            const res = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${apiKey}` },
+              body: form,
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.text) {
+                setText((t) => (t ? t + '\n' : '') + data.text.trim());
+                showToast('转写完成');
+              }
+            } else {
+              showToast('转写失败 · 请手动输入');
+            }
+          } else {
+            showToast('请用桌面/Android 语音输入');
+          }
+        } catch {
+          showToast('转写失败 · 请手动输入');
+        }
+      }
+    }
+
     setInterim('');
     setMode(text.trim() ? 'text' : 'idle');
     setTimeout(() => taRef.current?.focus(), 50);
@@ -81,6 +165,14 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
       try { recRef.current.stop(); } catch {}
       recRef.current = null;
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      } catch {}
+      mediaRecorderRef.current = null;
+    }
+    audioChunksRef.current = [];
     setInterim('');
     setMode('idle');
   }
@@ -90,15 +182,30 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
     setTimeout(() => taRef.current?.focus(), 30);
   }
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const f = e.target.files?.[0];
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPhotoData(ev.target.result);
-      expandToText();
-    };
-    reader.readAsDataURL(f);
+    try {
+      const compressed = await compressPhoto(f);
+      if (compressed.size > MAX_PHOTO_SIZE) {
+        showToast('照片过大，请裁剪后重试');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPhotoData(ev.target.result);
+        expandToText();
+      };
+      reader.readAsDataURL(compressed);
+    } catch {
+      // Fallback: read original
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPhotoData(ev.target.result);
+        expandToText();
+      };
+      reader.readAsDataURL(f);
+    }
   }
 
   function handleFile(e) {
