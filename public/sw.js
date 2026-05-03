@@ -1,12 +1,25 @@
 // 笔记 · service worker — Vite-aware offline caching.
-const CACHE = 'biji-v3';
+const CACHE = 'biji-v4';
 const PRECACHE = [
   './',
   'index.html',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).catch(() => {}));
+  e.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      fetch('./index.html').then((res) => {
+        if (res.ok) {
+          return res.clone().text().then((html) => {
+            const assetUrls = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)]
+              .map((m) => m[1]);
+            return cache.addAll([...PRECACHE, ...assetUrls]).then(() => res);
+          });
+        }
+        return cache.addAll(PRECACHE).then(() => res);
+      })
+    ).catch(() => {})
+  );
   self.skipWaiting();
 });
 

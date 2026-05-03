@@ -9,7 +9,6 @@ import { ListScreen } from './screen-list.jsx';
 import { DetailScreen } from './screen-detail.jsx';
 import { YanScreen } from './screen-yan.jsx';
 import { SettingsScreen } from './screen-settings.jsx';
-import { OnboardingScreen } from './screen-onboard.jsx';
 import { SearchScreen } from './screen-search.jsx';
 import { TagsScreen } from './screen-tags.jsx';
 import { TrashScreen } from './screen-trash.jsx';
