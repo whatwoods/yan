@@ -1,4 +1,4 @@
-// icons.js — Hand-stroked SVG icon set.
+// icons.jsx — Hand-stroked SVG icon set.
 
 const Icon = ({ d, size = 22, stroke = 'currentColor', fill = 'none', sw = 1.6, children, vb = '0 0 24 24', style }) => (
   <svg width={size} height={size} viewBox={vb} fill={fill} stroke={stroke}
@@ -7,7 +7,7 @@ const Icon = ({ d, size = 22, stroke = 'currentColor', fill = 'none', sw = 1.6, 
   </svg>
 );
 
-const ICONS = {
+export const ICONS = {
   pen:     (p) => <Icon {...p} d="M3 21l3.8-1 11-11-2.8-2.8-11 11L3 21zM14 7l3 3M16.5 4.5L18 3l3 3-1.5 1.5" />,
   mic:     (p) => <Icon {...p}><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4M8 22h8"/></Icon>,
   camera:  (p) => <Icon {...p}><path d="M3 8a2 2 0 012-2h2.5l1.5-2h6l1.5 2H19a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/><circle cx="12" cy="13" r="4"/></Icon>,
@@ -35,5 +35,3 @@ const ICONS = {
   settings:(p) => <Icon {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H3a2 2 0 110-4h.1a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V3a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H21a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/></Icon>,
   square:  (p) => <Icon {...p} fill="currentColor" sw={0}><rect x="6" y="6" width="12" height="12" rx="2"/></Icon>,
 };
-
-window.ICONS = ICONS;

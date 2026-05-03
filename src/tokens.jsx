@@ -1,6 +1,6 @@
-// tokens.js — exported palette & helpers (CSS vars are in styles.css)
+// tokens.jsx — exported palette & helpers (CSS vars are in styles.css)
 
-const TOKENS = {
+export const TOKENS = {
   paper: '#f4ede1', paperDeep: '#ebe1d0', paperLight: '#faf5ea', fold: '#e0d4bd',
   ink: '#1f1a14', inkSoft: '#3a322a', inkMute: '#7a6f5f', inkFade: '#a89e8c',
   seal: '#b8443a', bamboo: '#5b7a5a', ochre: '#c89342', indigo: '#3d5a7c', plum: '#8b4a5e',
@@ -11,18 +11,15 @@ const TOKENS = {
   fontMono:  '"JetBrains Mono", "SF Mono", Menlo, monospace',
 };
 
-const PERSONAS = {
+export const PERSONAS = {
   yan:    { mark: '砚', name: '砚',   color: '#b8443a', desc: '安静的小印章', tone: '简短' },
   zhi:    { mark: '知', name: '知',   color: '#3d5a7c', desc: '一位老学究',   tone: '考究' },
   ming:   { mark: '茗', name: '茗',   color: '#5b7a5a', desc: '泡茶的友人',   tone: '温和' },
   monkey: { mark: '猴', name: '小猴', color: '#c89342', desc: '好奇的助手',   tone: '活泼' },
 };
 
-window.TOKENS = TOKENS;
-window.PERSONAS = PERSONAS;
-
 // Format helpers
-window.formatRelative = function (ts) {
+export function formatRelative(ts) {
   const now = Date.now();
   const d = new Date(ts);
   const diff = now - ts;
@@ -36,9 +33,9 @@ window.formatRelative = function (ts) {
   if (sameDay(ts, yest)) return '昨天';
   if (diff < 7 * 86_400_000) return ['日','一','二','三','四','五','六'][d.getDay()] + '曜';
   return `${d.getMonth() + 1}月${d.getDate()}日`;
-};
+}
 
-window.dayLabel = function (ts) {
+export function dayLabel(ts) {
   const d = new Date(ts);
   const now = new Date();
   const sameDay = (a, b) =>
@@ -47,14 +44,14 @@ window.dayLabel = function (ts) {
   const yest = new Date(now); yest.setDate(yest.getDate() - 1);
   if (sameDay(d, yest)) return '昨日';
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
-};
+}
 
-window.timeLabel = function (ts) {
+export function timeLabel(ts) {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
+}
 
-window.fullDate = function (ts) {
+export function fullDate(ts) {
   const d = new Date(ts);
-  return `${d.getFullYear()} · ${String(d.getMonth() + 1).padStart(2, '0')} · ${String(d.getDate()).padStart(2, '0')} — ${window.timeLabel(ts)}`;
-};
+  return `${d.getFullYear()} · ${String(d.getMonth() + 1).padStart(2, '0')} · ${String(d.getDate()).padStart(2, '0')} — ${timeLabel(ts)}`;
+}
