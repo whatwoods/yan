@@ -27,10 +27,10 @@
   --shadow:      0 1px 2px rgba(60, 40, 20, .06), 0 4px 16px rgba(60, 40, 20, .08);
   --shadow-deep: 0 2px 6px rgba(60, 40, 20, .08), 0 12px 32px rgba(60, 40, 20, .14);
 
-  --font-serif: "LXGW WenKai", "Noto Serif SC", "Songti SC", serif;
-  --font-sans:  "LXGW WenKai", "Noto Sans SC", "PingFang SC", sans-serif;
-  --font-brush: "Noto Serif SC", "Songti SC", serif;
-  --font-mono:  "Source Code Pro", "SF Mono", Menlo, monospace;
+  --font-serif: Georgia, "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  --font-sans:  -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-brush: Georgia, "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  --font-mono:  "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
 
   --radius-mul: 1;
 
@@ -237,7 +237,7 @@ html, body {
   font-style: italic;
 }
 .md-body code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.88em;
   background: var(--paper-deep);
   padding: 1px 5px;
