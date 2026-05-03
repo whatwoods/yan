@@ -14,13 +14,32 @@ import { SearchScreen } from './screen-search.jsx';
 import { TagsScreen } from './screen-tags.jsx';
 
 export function App() {
-  const [notes, setNotes] = useState(() => Store.loadNotes());
+  const [notes, setNotes] = useState([]);
   const [settings, setSettings] = useState(() => Store.loadSettings());
   const [route, setRoute] = useState(() => Store.isFirstRun() ? 'onboard' : 'capture');
   const [openNoteId, setOpenNoteId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const persona = PERSONAS[settings.persona] || PERSONAS.yan;
+
+  // ── Initialize Store (IndexedDB + migration) on mount ─────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await Store.init();
+        if (cancelled) return;
+        setNotes(Store.getNotes());
+        setSettings(Store.loadSettings());
+      } catch (err) {
+        console.error('Store.init() failed:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Apply font choice via CSS var
   useEffect(() => {
@@ -39,61 +58,52 @@ export function App() {
     document.documentElement.style.setProperty('--accent', persona.color);
   }, [persona.color]);
 
-  // Persist settings on change
-  useEffect(() => { Store.saveSettings(settings); }, [settings]);
+  // Persist settings on change (debounced via effect)
+  useEffect(() => {
+    if (!loading) Store.saveSettings(settings);
+  }, [settings, loading]);
 
   // ── Note actions ─────────────────────────────────────────
-  const saveNewNote = useCallback((draft) => {
+  const saveNewNote = useCallback(async (draft) => {
     const body = draft.body || '';
     const note = {
-      id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       kind: draft.kind || 'text',
       title: autoTitle(body),
       body,
+      tags: settings.autoTag ? autoTags(body) : [],
+      summary: '',
+      people: extractPeople(body),
+      pinned: false,
+      // backward compat fields for screens
       photo: draft.photo || null,
       duration: draft.duration || null,
-      tags: settings.autoTag ? autoTags(body) : [],
-      summary: '', // will fill async
-      people: extractPeople(body),
       createdAt: Date.now(),
-      pinned: false,
     };
-    setNotes((prev) => {
-      const next = [note, ...prev];
-      Store.saveNotes(next);
-      return next;
-    });
+
+    await Store.addNote(note);
+    setNotes(Store.getNotes());
 
     // Simulate background AI: refine summary after a short delay
-    setTimeout(() => {
-      setNotes((prev) => {
-        const idx = prev.findIndex((n) => n.id === note.id);
-        if (idx === -1) return prev;
-        const updated = { ...prev[idx], summary: autoSummary(body) };
-        const next = [...prev]; next[idx] = updated;
-        Store.saveNotes(next);
-        return next;
-      });
-      showToast(`${persona.name}已识其要意`);
+    const addedNote = Store.getNotes()[0]; // just-added note is first
+    setTimeout(async () => {
+      if (addedNote) {
+        await Store.updateNote(addedNote.id, { summary: autoSummary(body) });
+        setNotes(Store.getNotes());
+        showToast(`${persona.name}已识其要意`);
+      }
     }, 900);
 
     showToast('已收');
   }, [settings.autoTag, persona.name]);
 
-  const updateNote = useCallback((id, patch) => {
-    setNotes((prev) => {
-      const next = prev.map((n) => n.id === id ? { ...n, ...patch } : n);
-      Store.saveNotes(next);
-      return next;
-    });
+  const updateNote = useCallback(async (id, patch) => {
+    await Store.updateNote(id, patch);
+    setNotes(Store.getNotes());
   }, []);
 
-  const deleteNote = useCallback((id) => {
-    setNotes((prev) => {
-      const next = prev.filter((n) => n.id !== id);
-      Store.saveNotes(next);
-      return next;
-    });
+  const deleteNote = useCallback(async (id) => {
+    await Store.deleteNote(id);
+    setNotes(Store.getNotes());
     showToast('已删');
   }, []);
 
@@ -115,17 +125,24 @@ export function App() {
   }, [route]);
 
   // ── Settings actions ─────────────────────────────────────
-  const onResetSeed = () => {
+  const onResetSeed = async () => {
     if (!confirm('用示例数据覆盖当前所有笔记？')) return;
-    localStorage.removeItem('biji.notes.v1');
-    const fresh = Store.loadNotes();
-    setNotes(fresh);
+    // Clear IndexedDB and re-seed
+    const all = Store.getAllCachedNotes();
+    for (const n of all) {
+      await Store.permanentDelete(n.id);
+    }
+    await Store.init();
+    setNotes(Store.getNotes());
     showToast('已重置');
   };
-  const onClearAll = () => {
+  const onClearAll = async () => {
     if (!confirm('清空全部笔记？此操作不可撤销。')) return;
-    Store.saveNotes([]);
-    setNotes([]);
+    const all = Store.getAllCachedNotes();
+    for (const n of all) {
+      await Store.permanentDelete(n.id);
+    }
+    setNotes(Store.getNotes());
     showToast('已清空');
   };
   const onExport = () => {
@@ -142,6 +159,23 @@ export function App() {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+
+  // ── Loading screen ───────────────────────────────────────
+  if (loading) {
+    return (
+      <ToastHost>
+        <div className="app" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          minHeight: '100vh', fontFamily: TOKENS.fontSerif,
+        }}>
+          <div style={{ textAlign: 'center', color: 'var(--ink-mute)' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>砚</div>
+            <div style={{ fontSize: 13 }}>正在开启笔记…</div>
+          </div>
+        </div>
+      </ToastHost>
+    );
+  }
 
   // ── Render ───────────────────────────────────────────────
   const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);

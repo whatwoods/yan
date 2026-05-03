@@ -1,12 +1,29 @@
-// store.jsx — localStorage-backed notes + settings, plus client-side AI tagging.
+// store.jsx — IndexedDB-backed notes + settings, plus client-side AI tagging.
+// Migrated from localStorage to IndexedDB (biji-v1) on first run.
 
 import { formatRelative } from './tokens.jsx';
+import {
+  getAllNotes, putNote, deleteNote as dbDeleteNote,
+  getMeta, setMeta,
+} from './db.js';
+import { migrate } from './migrate.js';
+import { generateId } from './note-format.js';
 
-const STORAGE_NOTES = 'biji.notes.v1';
-const STORAGE_SETTINGS = 'biji.settings.v1';
 const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
 
-// ── Tag dictionary — used by the local "AI" tagger ────────────────
+// ── Default categories ───────────────────────────────────────
+
+export const DEFAULT_CATEGORIES = [
+  { name: '学习', color: '竹青', hex: '#5b7a5a' },
+  { name: '工作', color: '群青', hex: '#3d5a7c' },
+  { name: '生活', color: '藤黄', hex: '#c89342' },
+  { name: '想法', color: '梅紫', hex: '#8b4a5e' },
+  { name: 'AI', color: '印章红', hex: '#b8443a' },
+  { name: '开发', color: '茶色', hex: '#8b6f47' },
+  { name: '收藏', color: '墨色', hex: '#1f1a14' },
+];
+
+// ── Tag dictionary — used by the local "AI" tagger ────────────
 // Each tag is a category that maps to triggering keywords.
 // In a production app this would be replaced by an Anthropic API call;
 // here we approximate with a dictionary so the UX still feels alive offline.
@@ -26,6 +43,8 @@ const TAG_DICT = [
 ];
 
 const PEOPLE_HINT = /([一-龥])(姐|哥|弟|妹|姨|叔|爸|妈|总|先生|女士)|@([一-龥\w]+)/g;
+
+// ── AI tagging functions (unchanged) ─────────────────────────
 
 export function autoTags(body) {
   const text = (body || '').toLowerCase();
@@ -67,6 +86,8 @@ export function extractPeople(body) {
   return [...set];
 }
 
+// ── localStorage helpers (for first-run flag only) ───────────
+
 function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
   catch { return fallback; }
@@ -75,116 +96,353 @@ function saveJSON(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-// ── seed notes for fresh installs (so the app feels alive) ──────────
+// ── Seed notes for fresh installs (new data model) ───────────
+
 function seedNotes() {
-  const now = Date.now();
+  const now = new Date();
   const HOUR = 3_600_000, DAY = 86_400_000;
+  const ts = (offset) => new Date(now.getTime() - offset).toISOString();
+  const ct = (offset) => now.getTime() - offset; // backward-compat createdAt
+
   return [
     {
-      id: 's1', kind: 'text',
+      id: generateId('s01'), kind: 'text',
+      created: ts(HOUR), modified: ts(HOUR),
       title: '关于"快速记"的几个想法',
       body: '晚饭后又重新想了一遍首屏。觉得之前那版有个核心问题：把"功能"和"内容"放在一起，反而稀释了"快速记"的紧迫感。\n\n新的方案——首屏只做一件事，就是写。文字作为基础底色，语音、拍照、贴附件作为悬浮的圆形按钮，分布在输入框之下。\n\n关键是节奏：用户从"想记"到"开始记"应该不超过 1 秒。',
+      category: '工作',
       tags: [{ label: '工作', color: 'indigo' }, { label: '产品', color: 'bamboo' }, { label: '首屏', color: 'ochre' }, { label: '决策', color: 'ink' }],
       summary: '建议把输入框作为视觉中心，三种输入方式以悬浮按钮承载。',
+      ai: null,
       people: ['阿宁'],
-      createdAt: now - HOUR,
+      attachments: [],
+      deleted_at: null,
       pinned: true,
+      // backward compat
+      createdAt: ct(HOUR),
+      photo: null,
+      duration: null,
     },
     {
-      id: 's2', kind: 'voice',
+      id: generateId('s02'), kind: 'voice',
+      created: ts(4 * HOUR), modified: ts(4 * HOUR),
       title: '与阿宁的电话',
       body: '聊到她要去杭州，可推荐几间安静的茶馆。她说工作上遇到瓶颈，想换个城市待几天。提醒她带《长物志》，路上看刚好。',
+      category: '生活',
       tags: [{ label: '人', color: 'plum' }, { label: '阿宁', color: 'plum' }],
       summary: '阿宁要去杭州 · 推荐茶馆 · 带书',
+      ai: null,
       people: ['阿宁'],
+      attachments: [],
+      deleted_at: null,
+      pinned: false,
+      createdAt: ct(4 * HOUR),
+      photo: null,
       duration: '4:12',
-      createdAt: now - 4 * HOUR,
     },
     {
-      id: 's3', kind: 'text',
+      id: generateId('s03'), kind: 'text',
+      created: ts(8 * HOUR), modified: ts(8 * HOUR),
       title: '咖啡馆窗边读到的句子',
       body: '"庭院深深深几许"——欧阳修\n\n这句话第一次在课本上读到时没什么感觉，今天在这家临河的小店里再读，忽然就懂了。',
+      category: '学习',
       tags: [{ label: '阅读', color: 'bamboo' }, { label: '摘抄', color: 'ochre' }],
       summary: '欧阳修「庭院深深深几许」 · 重读有感',
+      ai: null,
       people: [],
-      createdAt: now - 8 * HOUR,
+      attachments: [],
+      deleted_at: null,
+      pinned: false,
+      createdAt: ct(8 * HOUR),
+      photo: null,
+      duration: null,
     },
     {
-      id: 's4', kind: 'text',
+      id: generateId('s04'), kind: 'text',
+      created: ts(DAY + 2 * HOUR), modified: ts(DAY + 2 * HOUR),
       title: '健身计划调整',
       body: '改成一三五早晨跑步，二四力量训练。周末休息或徒步。\n\n睡眠也得调，晚上 11 点前必须躺下。',
+      category: '生活',
       tags: [{ label: '身体', color: 'seal' }, { label: '待办', color: 'seal' }],
       summary: '一三五跑步 / 二四力量 / 周末徒步 / 11 点睡',
+      ai: null,
       people: [],
-      createdAt: now - DAY - 2 * HOUR,
+      attachments: [],
+      deleted_at: null,
+      pinned: false,
+      createdAt: ct(DAY + 2 * HOUR),
+      photo: null,
+      duration: null,
     },
     {
-      id: 's5', kind: 'text',
+      id: generateId('s05'), kind: 'text',
+      created: ts(DAY + 9 * HOUR), modified: ts(DAY + 9 * HOUR),
       title: '苏堤的春景',
       body: '风很大，柳絮像下雪。沿着堤一路走到了苏小小墓。回程在断桥边的小馆吃了片儿川。',
+      category: '生活',
       tags: [{ label: '旅行', color: 'ochre' }, { label: '感受', color: 'plum' }],
       summary: '苏堤 · 苏小小墓 · 片儿川',
+      ai: null,
       people: [],
-      createdAt: now - DAY - 9 * HOUR,
+      attachments: [],
+      deleted_at: null,
+      pinned: false,
+      createdAt: ct(DAY + 9 * HOUR),
+      photo: null,
+      duration: null,
     },
     {
-      id: 's6', kind: 'text',
+      id: generateId('s06'), kind: 'text',
+      created: ts(2 * DAY), modified: ts(2 * DAY),
       title: '产品评审 · 把"快速记"放在 C 位',
       body: '团队对首屏分歧挺大。结论：把"快速记"作为唯一首屏入口，导航缩到三栏 + 设置。',
+      category: '工作',
       tags: [{ label: '工作', color: 'indigo' }, { label: '决策', color: 'ink' }],
       summary: '首屏 = 快速记 · 三栏 + 设置',
+      ai: null,
       people: [],
-      createdAt: now - 2 * DAY,
+      attachments: [],
+      deleted_at: null,
+      pinned: false,
+      createdAt: ct(2 * DAY),
+      photo: null,
+      duration: null,
     },
   ];
 }
 
+// ── Store ────────────────────────────────────────────────────
+
 export const Store = {
-  // ── notes ─────────────────────────────────────────
-  loadNotes() {
-    const stored = loadJSON(STORAGE_NOTES, null);
-    if (stored && Array.isArray(stored)) return stored;
-    const seeded = seedNotes();
-    saveJSON(STORAGE_NOTES, seeded);
-    return seeded;
-  },
-  saveNotes(arr) { saveJSON(STORAGE_NOTES, arr); },
-  addNote(note) {
-    const all = Store.loadNotes();
-    all.unshift(note);
-    Store.saveNotes(all);
-    return all;
-  },
-  updateNote(id, patch) {
-    const all = Store.loadNotes();
-    const idx = all.findIndex((n) => n.id === id);
-    if (idx === -1) return all;
-    all[idx] = { ...all[idx], ...patch };
-    Store.saveNotes(all);
-    return all;
-  },
-  deleteNote(id) {
-    const all = Store.loadNotes().filter((n) => n.id !== id);
-    Store.saveNotes(all);
-    return all;
+  _notes: [],     // in-memory cache
+  _settings: null,
+
+  // ── Init (call once on app mount) ────────────────────────
+  async init() {
+    // 1. Run migration from localStorage if needed
+    await migrate();
+
+    // 2. Load notes from IndexedDB
+    const all = await getAllNotes();
+
+    if (all.length === 0) {
+      // Fresh install — seed demo notes
+      const seeded = seedNotes();
+      for (const n of seeded) {
+        await putNote(n);
+      }
+      Store._notes = seeded.map((n) => ensureCompat(n));
+    } else {
+      Store._notes = all.map((n) => ensureCompat(n));
+    }
+
+    // 3. Initialize default categories if not present
+    const cats = await getMeta('categories');
+    if (!cats) {
+      await setMeta('categories', DEFAULT_CATEGORIES);
+    }
+
+    // 4. Load settings (from IndexedDB meta, falling back to localStorage)
+    let settings = await getMeta('settings');
+    if (!settings) {
+      // Try reading from localStorage (pre-migration or first load)
+      try {
+        settings = JSON.parse(localStorage.getItem('biji.settings.v1') || 'null');
+      } catch {}
+    }
+    if (!settings) {
+      settings = {
+        persona: 'yan',
+        theme: 'paper',
+        font: 'serif',
+        autoTag: true,
+        density: 'comfy',
+      };
+    }
+    Store._settings = settings;
+    // Persist to IndexedDB for future reads
+    await setMeta('settings', settings);
+
+    return Store._notes;
   },
 
-  // ── settings ──────────────────────────────────────
+  // ── Notes (read from memory cache) ──────────────────────
+
+  /**
+   * Return non-deleted notes from the in-memory cache.
+   * This is the primary read method — synchronous, fast.
+   */
+  getNotes() {
+    return Store._notes.filter((n) => !n.deleted_at);
+  },
+
+  /**
+   * Return ALL notes (including soft-deleted) from cache.
+   */
+  getAllCachedNotes() {
+    return Store._notes;
+  },
+
+  // ── Notes CRUD (async, writes to IndexedDB + cache) ─────
+
+  async addNote(note) {
+    const now = new Date().toISOString();
+    const fullNote = {
+      id: note.id || generateId(getDeviceFingerprint()),
+      created: note.created || now,
+      modified: now,
+      kind: note.kind || 'text',
+      category: note.category || guessCategoryFromTags(note.tags),
+      tags: note.tags || [],
+      people: note.people || [],
+      pinned: note.pinned || false,
+      title: note.title || '',
+      body: note.body || '',
+      summary: note.summary || '',
+      ai: note.ai || null,
+      attachments: note.attachments || [],
+      deleted_at: null,
+      // backward compat
+      createdAt: note.createdAt || Date.now(),
+      photo: note.photo || null,
+      duration: note.duration || null,
+    };
+
+    await putNote(fullNote);
+    Store._notes.unshift(fullNote);
+    return fullNote;
+  },
+
+  async updateNote(id, patch) {
+    const idx = Store._notes.findIndex((n) => n.id === id);
+    if (idx === -1) return null;
+
+    const updated = {
+      ...Store._notes[idx],
+      ...patch,
+      modified: new Date().toISOString(),
+    };
+    // Sync backward-compat fields
+    if (patch.created) updated.createdAt = new Date(patch.created).getTime();
+
+    await putNote(updated);
+    Store._notes[idx] = updated;
+    return updated;
+  },
+
+  async deleteNote(id) {
+    // Hard delete
+    await dbDeleteNote(id);
+    Store._notes = Store._notes.filter((n) => n.id !== id);
+  },
+
+  /**
+   * Soft-delete: set deleted_at timestamp, keep in DB.
+   */
+  async softDelete(id) {
+    return Store.updateNote(id, { deleted_at: new Date().toISOString() });
+  },
+
+  /**
+   * Restore a soft-deleted note.
+   */
+  async restore(id) {
+    return Store.updateNote(id, { deleted_at: null });
+  },
+
+  /**
+   * Permanently remove a note from IndexedDB.
+   */
+  async permanentDelete(id) {
+    return Store.deleteNote(id);
+  },
+
+  // ── Settings ────────────────────────────────────────────
+
   loadSettings() {
-    return loadJSON(STORAGE_SETTINGS, {
-      persona: 'yan',
-      theme: 'paper',
-      font: 'serif',
-      autoTag: true,
-      density: 'comfy',
-    });
+    // Synchronous fallback for initial render before init() completes
+    if (Store._settings) return Store._settings;
+    try {
+      return JSON.parse(localStorage.getItem('biji.settings.v1') || 'null') || {
+        persona: 'yan', theme: 'paper', font: 'serif', autoTag: true, density: 'comfy',
+      };
+    } catch {
+      return { persona: 'yan', theme: 'paper', font: 'serif', autoTag: true, density: 'comfy' };
+    }
   },
-  saveSettings(s) { saveJSON(STORAGE_SETTINGS, s); },
 
-  // ── first-run ─────────────────────────────────────
+  async saveSettings(s) {
+    Store._settings = s;
+    await setMeta('settings', s);
+  },
+
+  // ── Categories ──────────────────────────────────────────
+
+  async getCategories() {
+    const cats = await getMeta('categories');
+    return cats || DEFAULT_CATEGORIES;
+  },
+
+  async saveCategories(cats) {
+    await setMeta('categories', cats);
+  },
+
+  // ── Device fingerprint ──────────────────────────────────
+
+  getDeviceFingerprint,
+
+  // ── First-run (kept in localStorage for simplicity) ─────
+
   isFirstRun() { return loadJSON(STORAGE_FIRST_RUN, true); },
   markRun() { saveJSON(STORAGE_FIRST_RUN, false); },
 };
+
+// ── Helpers ──────────────────────────────────────────────────
+
+/**
+ * Add backward-compat fields to a note so existing screens still work.
+ * - createdAt (number) from created (ISO string)
+ * - photo (data URL or null)
+ * - duration (string or null)
+ */
+function ensureCompat(note) {
+  if (note.createdAt === undefined) {
+    note.createdAt = note.created ? new Date(note.created).getTime() : Date.now();
+  }
+  if (note.photo === undefined) {
+    note.photo = null; // old photos were base64 data URLs, not recoverable from attachments
+  }
+  if (note.duration === undefined) {
+    note.duration = null;
+  }
+  return note;
+}
+
+function getDeviceFingerprint() {
+  let fp = localStorage.getItem('biji.deviceFingerprint');
+  if (!fp) {
+    fp = Math.random().toString(36).slice(2, 5);
+    localStorage.setItem('biji.deviceFingerprint', fp);
+  }
+  return fp;
+}
+
+function guessCategoryFromTags(tags) {
+  if (!tags || tags.length === 0) return '想法';
+  const TAG_TO_CATEGORY = {
+    '工作': '工作', '产品': '工作', '首屏': '工作', '决策': '工作',
+    '阅读': '学习', '学习': '学习',
+    '人': '生活', '身体': '生活', '旅行': '生活', '生活': '生活',
+    '待办': '生活', '钱': '生活', '摘抄': '生活',
+    '想法': '想法', '感受': '想法', '随手': '想法',
+    'AI': 'AI', '开发': '开发', '收藏': '收藏',
+  };
+  for (const t of tags) {
+    const cat = TAG_TO_CATEGORY[t.label || t];
+    if (cat) return cat;
+  }
+  return '想法';
+}
 
 // ── chat with 砚 — generates plausible responses based on memory ─────
 export function askYan(question, notes) {
