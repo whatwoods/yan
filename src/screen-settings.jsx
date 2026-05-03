@@ -284,8 +284,23 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     setEditingCat(null);
   }, [categories, editingCat, saveCategories]);
 
-  const handleDeleteCategory = useCallback((index) => {
-    if (!confirm(`删除分类「${categories[index].name}」？`)) return;
+  const handleDeleteCategory = useCallback(async (index) => {
+    const catName = categories[index].name;
+    // 确定迁移目标：优先「想法」，若「想法」本身被删则取第一个默认分类
+    const fallbackName = '想法';
+    const migrateTo = catName === fallbackName
+      ? (DEFAULT_CATEGORIES.find(c => c.name !== catName)?.name ?? categories.find((c, i) => i !== index)?.name)
+      : fallbackName;
+    if (!confirm(`删除分类「${catName}」？\n该分类下的笔记将移到「${migrateTo}」。`)) return;
+
+    // 迁移该分类下的所有笔记
+    const allNotes = Store.getAllCachedNotes();
+    for (const note of allNotes) {
+      if (note.category === catName) {
+        await Store.updateNote(note.id, { category: migrateTo });
+      }
+    }
+
     const updated = categories.filter((_, i) => i !== index);
     saveCategories(updated);
   }, [categories, saveCategories]);
