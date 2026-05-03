@@ -8,6 +8,36 @@ import { Store } from './store.jsx';
 import { getMeta, setMeta } from './db.js';
 import { initWebDAV, syncAll } from './sync.js';
 
+// ── Simple virtual list for 100+ notes ────────────────────────
+const VIRTUAL_THRESHOLD = 100;
+const ITEM_H_COMFY = 100;
+const ITEM_H_COMPACT = 76;
+const HEADER_H = 36;
+const BUFFER = 6;
+
+function useVirtualList(flatItems, containerRef, itemHeight) {
+  const [range, setRange] = useState({ start: 0, end: 30 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const scrollTop = el.scrollTop;
+      const viewH = el.clientHeight;
+      const start = Math.max(0, Math.floor(scrollTop / itemHeight) - BUFFER);
+      const end = Math.min(flatItems.length, Math.ceil((scrollTop + viewH) / itemHeight) + BUFFER);
+      setRange({ start, end });
+    };
+
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [flatItems.length, itemHeight, containerRef]);
+
+  return range;
+}
+
 function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose, onTags, initialFilter }) {
   const T = TOKENS, I = ICONS;
 
@@ -133,9 +163,27 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
 
   const pad = density === 'compact' ? 10 : 14;
   const gap = density === 'compact' ? 8 : 12;
+  const itemH = density === 'compact' ? ITEM_H_COMPACT : ITEM_H_COMFY;
 
   // Pinned at the very top
   const pinned = filtered.filter((n) => n.pinned);
+  const useVirtual = filtered.length > VIRTUAL_THRESHOLD;
+
+  // Flatten grouped items for virtual scrolling
+  const flatItems = useMemo(() => {
+    if (!useVirtual) return [];
+    const items = [];
+    pinned.forEach((n) => items.push({ type: 'note', note: n, pad }));
+    grouped.forEach(([dayKey, dayItems]) => {
+      const remain = dayItems.filter((n) => !n.pinned);
+      if (remain.length === 0) return;
+      items.push({ type: 'header', dayKey, count: remain.length });
+      remain.forEach((n) => items.push({ type: 'note', note: n, pad }));
+    });
+    return items;
+  }, [pinned, grouped, useVirtual, pad]);
+
+  const virtualRange = useVirtual ? useVirtualList(flatItems, scrollRef, itemH) : null;
 
   return (
     <div className="screen paper">
@@ -197,7 +245,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
         })}
       </div>
 
-      {/* Notes */}
+      {/* Notes — virtual scroll for 100+ items, normal render otherwise */}
       <div ref={scrollRef} className="scroll" style={{ flex: 1, padding: '0 20px 88px' }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}>
@@ -214,41 +262,70 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
           </div>
         )}
 
-        {pinned.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{
-              fontSize: 12, color: 'var(--ink-mute)', fontFamily: T.fontSerif,
-              padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <I.pin size={14} stroke="var(--seal)" />
-              <span style={{ fontWeight: 600 }}>钉住</span>
-              <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-              {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
-            </div>
+        {useVirtual && virtualRange ? (
+          // Virtual scrolling for large lists
+          <div style={{ height: flatItems.length * itemH, position: 'relative' }}>
+            {flatItems.slice(virtualRange.start, virtualRange.end).map((item, i) => {
+              const idx = virtualRange.start + i;
+              const top = idx * itemH;
+              if (item.type === 'header') {
+                return (
+                  <div key={`h-${item.dayKey}`} style={{
+                    position: 'absolute', top, left: 0, right: 0, height: HEADER_H,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--ink-mute)', fontFamily: T.fontSerif }}>{item.dayKey}</span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{item.count} 条</span>
+                  </div>
+                );
+              }
+              return (
+                <div key={item.note.id} style={{ position: 'absolute', top, left: 0, right: 0, height: itemH, paddingTop: item.type === 'header' ? 0 : 2, paddingBottom: 2 }}>
+                  <NoteCard note={item.note} pad={item.pad} catColor={categories.find(c => c.name === item.note.category)?.hex} onOpen={() => onOpenNote(item.note.id)} />
+                </div>
+              );
+            })}
           </div>
+        ) : (
+          // Normal render for smaller lists
+          <>
+            {pinned.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  fontSize: 12, color: 'var(--ink-mute)', fontFamily: T.fontSerif,
+                  padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <I.pin size={14} stroke="var(--seal)" />
+                  <span style={{ fontWeight: 600 }}>钉住</span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap }}>
+                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
+                </div>
+              </div>
+            )}
+            {grouped.map(([dayKey, items]) => {
+              const remain = items.filter((n) => !n.pinned);
+              if (remain.length === 0 && pinned.length > 0) return null;
+              return (
+                <div key={dayKey} style={{ marginBottom: 24 }}>
+                  <div style={{
+                    fontSize: 12, color: 'var(--ink-mute)', fontFamily: T.fontSerif,
+                    padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span style={{ fontWeight: 600 }}>{dayKey}</span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
+                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{remain.length} 条</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap }}>
+                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
+                  </div>
+                </div>
+              );
+            })}
+          </>
         )}
-
-        {grouped.map(([dayKey, items]) => {
-          const remain = items.filter((n) => !n.pinned);
-          if (remain.length === 0 && pinned.length > 0) return null;
-          return (
-            <div key={dayKey} style={{ marginBottom: 24 }}>
-              <div style={{
-                fontSize: 12, color: 'var(--ink-mute)', fontFamily: T.fontSerif,
-                padding: '8px 0', display: 'flex', alignItems: 'center', gap: 10,
-              }}>
-                <span style={{ fontWeight: 600 }}>{dayKey}</span>
-                <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
-                <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{remain.length} 条</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
-              </div>
-            </div>
-          );
-        })}
       </div>
 
       {/* FAB */}

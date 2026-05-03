@@ -1,6 +1,7 @@
 // store.jsx — IndexedDB-backed notes + settings, plus client-side AI tagging.
 // Migrated from localStorage to IndexedDB (biji-v1) on first run.
 
+import MiniSearch from 'minisearch';
 import { formatRelative } from './tokens.jsx';
 import {
   getAllNotes, putNote, deleteNote as dbDeleteNote,
@@ -8,6 +9,32 @@ import {
   enqueueSync, getSyncQueue, clearSyncQueue,
 } from './db.js';
 import { migrate } from './migrate.js';
+
+// ── MiniSearch full-text index ────────────────────────────────
+let searchIndex = null;
+
+export function buildSearchIndex(notes) {
+  searchIndex = new MiniSearch({
+    fields: ['title', 'body'],
+    storeFields: ['id', 'title'],
+    searchOptions: { boost: { title: 3 }, prefix: true },
+  });
+  searchIndex.addAll(notes.map((n) => ({ id: n.id, title: n.title, body: n.body || '' })));
+}
+
+export function searchNotes(query) {
+  if (!searchIndex || !query?.trim()) return [];
+  try {
+    return searchIndex.search(query.trim()).map((r) => r.id);
+  } catch {
+    return [];
+  }
+}
+
+export function rebuildSearchIndex() {
+  searchIndex = null;
+  buildSearchIndex(Store.getNotes());
+}
 import { generateId } from './note-format.js';
 import { classifyNote, extractTagsAndPeople, generateSummary } from './ai.js';
 
@@ -305,7 +332,10 @@ export const Store = {
       await setMeta('categories', DEFAULT_CATEGORIES);
     }
 
-    // 4. Load settings (from IndexedDB meta, falling back to localStorage)
+    // 6. Build full-text search index
+    buildSearchIndex(Store._notes);
+
+    // 7. Load settings (from IndexedDB meta, falling back to localStorage)
     let settings = await getMeta('settings');
     if (!settings) {
       // Try reading from localStorage (pre-migration or first load)

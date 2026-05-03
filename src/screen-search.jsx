@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
+import { searchNotes } from './store.jsx';
 
 export function SearchScreen({ notes, onBack, onOpenNote, persona }) {
   const T = TOKENS, I = ICONS;
@@ -12,11 +13,22 @@ export function SearchScreen({ notes, onBack, onOpenNote, persona }) {
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const matched = useMemo(() => {
-    const query = q.trim().toLowerCase();
+    const query = q.trim();
     if (!query) return [];
+    // Use MiniSearch index for full-text search (prefix, title-boosted)
+    const ids = searchNotes(query);
+    if (ids.length > 0) {
+      const idSet = new Set(ids);
+      const matched = notes.filter((n) => idSet.has(n.id));
+      // Preserve MiniSearch relevance order
+      const noteMap = new Map(matched.map((n) => [n.id, n]));
+      return ids.map((id) => noteMap.get(id)).filter(Boolean);
+    }
+    // Fallback to substring match if MiniSearch returns nothing
+    const lower = query.toLowerCase();
     return notes.filter((n) => {
       const hay = (n.title + ' ' + n.body + ' ' + (n.tags || []).map((t) => t.label).join(' ')).toLowerCase();
-      return hay.includes(query);
+      return hay.includes(lower);
     });
   }, [notes, q]);
 
