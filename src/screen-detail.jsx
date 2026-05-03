@@ -1,10 +1,10 @@
 // screen-detail.jsx — Single note detail with AI summary & tags.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TOKENS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, showToast } from './components.jsx';
-import { autoTitle, autoSummary, autoTags } from './store.jsx';
+import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 
 export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
   const T = TOKENS, I = ICONS;
@@ -12,6 +12,12 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(note?.body || '');
   const [showMore, setShowMore] = useState(false);
+  const [showCatPicker, setShowCatPicker] = useState(false);
+  const [categories, setCategories] = useState([]);
+
+  useEffect(() => {
+    Store.getCategories().then(setCategories).catch(() => {});
+  }, []);
 
   if (!note) return null;
 
@@ -83,6 +89,24 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
           {charCount ? ` · ${charCount} 字` : ''}
           {note.duration ? ` · ${note.duration}` : ''}
         </div>
+
+        {/* Category badge */}
+        {(() => {
+          const cat = categories.find((c) => c.name === note.category);
+          if (!cat) return null;
+          return (
+            <div onClick={() => setShowCatPicker(true)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '3px 10px', borderRadius: 999, marginBottom: 12,
+              background: cat.hex + '18', border: `1px solid ${cat.hex}40`,
+              cursor: 'pointer', fontSize: 12, fontFamily: T.fontSerif,
+              color: cat.hex, fontWeight: 600,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: cat.hex }} />
+              {cat.name}
+            </div>
+          );
+        })()}
 
         {/* Title */}
         <h1 style={{
@@ -219,6 +243,57 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
           )}
         </div>
       </div>
+
+      {/* Category picker sheet */}
+      {showCatPicker && (
+        <>
+          <div className="sheet-mask" onClick={() => setShowCatPicker(false)} />
+          <div className="sheet" style={{ height: 'auto', maxHeight: '60%' }}>
+            <div className="sheet-grip" />
+            <div style={{ padding: '0 24px 24px' }}>
+              <div style={{
+                fontSize: 12, color: 'var(--ink-mute)',
+                letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
+                fontFamily: T.fontSerif,
+              }}>选择分类</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {categories.map((cat) => (
+                  <button key={cat.name} onClick={() => {
+                    onUpdate(note.id, { category: cat.name });
+                    setShowCatPicker(false);
+                    showToast('已归类');
+                  }} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 14px', borderRadius: 12,
+                    background: note.category === cat.name ? cat.hex + '18' : 'var(--paper-light)',
+                    border: `1.5px solid ${note.category === cat.name ? cat.hex : 'var(--fold)'}`,
+                    cursor: 'pointer', textAlign: 'left',
+                  }}>
+                    <span style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      background: cat.hex, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 13, fontWeight: 600,
+                      fontFamily: T.fontSerif,
+                    }}>{cat.name[0]}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: T.fontSerif, fontSize: 15, color: 'var(--ink)' }}>
+                        {cat.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 1 }}>
+                        {cat.color}
+                      </div>
+                    </div>
+                    {note.category === cat.name && (
+                      <span style={{ color: cat.hex, fontSize: 14, fontWeight: 600 }}>选</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

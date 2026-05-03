@@ -301,6 +301,63 @@ mark {
   padding: 1px 4px; border-radius: 3px;
 }
 
+/* Category tabs — horizontal scrollable row */
+.category-tabs {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 6px;
+  padding: 2px 20px 10px;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+.category-tabs::-webkit-scrollbar { display: none; }
+
+/* Category tab pill */
+.category-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-family: var(--font-serif);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1.5px solid var(--fold);
+  background: transparent;
+  color: var(--ink-soft);
+  transition: border-color .15s, background .15s, color .15s;
+}
+.category-tab.active {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+/* Left border color bar on note cards */
+.category-bar {
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  opacity: .75;
+}
+
+/* Category badge — inline */
+.category-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: .02em;
+}
+
 /* Utilities */
 .flex { display: flex; }
 .col { flex-direction: column; }

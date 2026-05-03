@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag, showToast } from './components.jsx';
+import { Store } from './store.jsx';
 
 export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
   const T = TOKENS, I = ICONS;
@@ -15,11 +16,16 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
   const [interim, setInterim] = useState('');
   const [photoData, setPhotoData] = useState(null);
   const [recordingStart, setRecordingStart] = useState(0);
+  const [categories, setCategories] = useState([]);
 
   const taRef = useRef(null);
   const recRef = useRef(null);
   const photoInputRef = useRef(null);
   const filePickerRef = useRef(null);
+
+  useEffect(() => {
+    Store.getCategories().then(setCategories).catch(() => {});
+  }, []);
 
   // ── Recording (Web Speech API for transcription, MediaRecorder fallback). ───
   useEffect(() => {
@@ -173,6 +179,20 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
             }}>
               {n.title}
             </span>
+            {(() => {
+              const cat = categories.find((c) => c.name === n.category);
+              return cat ? (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '2px 8px', borderRadius: 999,
+                  background: cat.hex + '18', color: cat.hex,
+                  fontSize: 11, fontFamily: T.fontSerif, fontWeight: 600,
+                }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: cat.hex }} />
+                  {cat.name}
+                </span>
+              ) : null;
+            })()}
             {n.tags?.[0] && <Tag label={n.tags[0].label} color={n.tags[0].color} size="sm" />}
           </div>
         ))}

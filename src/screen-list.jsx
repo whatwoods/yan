@@ -4,12 +4,20 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { TOKENS, dayLabel, timeLabel } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, KindBadge, ScrHead } from './components.jsx';
+import { Store } from './store.jsx';
 
 function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose, onTags, initialFilter }) {
   const T = TOKENS, I = ICONS;
 
   const [filter, setFilter] = useState(initialFilter || '全部');
+  const [catFilter, setCatFilter] = useState('全部');
+  const [categories, setCategories] = useState([]);
   useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
+
+  // Load categories from Store on mount
+  useEffect(() => {
+    Store.getCategories().then(setCategories).catch(() => {});
+  }, []);
 
   const allTags = useMemo(() => {
     const counts = {};
@@ -23,9 +31,15 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   }, [notes]);
 
   const filtered = useMemo(() => {
-    if (filter === '全部') return notes;
-    return notes.filter((n) => (n.tags || []).some((t) => t.label === filter));
-  }, [notes, filter]);
+    let out = notes;
+    if (catFilter !== '全部') {
+      out = out.filter((n) => n.category === catFilter);
+    }
+    if (filter !== '全部') {
+      out = out.filter((n) => (n.tags || []).some((t) => t.label === filter));
+    }
+    return out;
+  }, [notes, catFilter, filter]);
 
   const grouped = useMemo(() => {
     const map = new Map();
@@ -51,6 +65,36 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
           <button className="icon-btn" onClick={onTags} aria-label="标签"><I.tag size={20} /></button>
         </>
       } />
+
+      {/* Category tabs */}
+      {categories.length > 0 && (
+        <div className="category-tabs">
+          {[{ name: '全部', hex: null }, ...categories].map((cat) => {
+            const active = cat.name === catFilter;
+            return (
+              <button key={cat.name} className={`category-tab ${active ? 'active' : ''}`}
+                onClick={() => setCatFilter(cat.name)}
+                style={cat.hex ? {
+                  color: cat.hex,
+                  borderColor: active ? cat.hex : 'var(--fold)',
+                  background: active ? cat.hex + '18' : 'transparent',
+                } : {
+                  color: active ? 'var(--ink)' : 'var(--ink-soft)',
+                  borderColor: active ? 'var(--ink)' : 'var(--fold)',
+                  background: active ? 'var(--ink)' : 'transparent',
+                }}>
+                {cat.hex && <span style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: cat.hex, flexShrink: 0,
+                }} />}
+                {active && cat.name === '全部' ? (
+                  <span style={{ color: 'var(--paper)' }}>{cat.name}</span>
+                ) : cat.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filter pills */}
       <div className="scroll" style={{
@@ -98,7 +142,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
               <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-              {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} onOpen={() => onOpenNote(it.id)} />)}
+              {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
             </div>
           </div>
         )}
@@ -117,7 +161,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
                 <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{remain.length} 条</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} onOpen={() => onOpenNote(it.id)} />)}
+                {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
               </div>
             </div>
           );
@@ -140,7 +184,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   );
 }
 
-function NoteCard({ note, pad, onOpen }) {
+function NoteCard({ note, pad, catColor, onOpen }) {
   const T = TOKENS;
   return (
     <div onClick={onOpen} style={{
@@ -149,10 +193,13 @@ function NoteCard({ note, pad, onOpen }) {
       borderRadius: 14, padding: pad,
       cursor: 'pointer',
       transition: 'transform .12s, box-shadow .12s',
+      position: 'relative',
+      paddingLeft: catColor ? pad + 6 : pad,
     }}
     onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(.99)'; }}
     onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
     onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}>
+      {catColor && <div className="category-bar" style={{ background: catColor }} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <KindBadge kind={note.kind} dur={note.duration} />
         <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>
