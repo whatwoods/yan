@@ -21,6 +21,17 @@ export function App() {
   const [openNoteId, setOpenNoteId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [installPrompt, setInstallPrompt] = useState(null);
+
+  // PWA install prompt
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   const persona = PERSONAS[settings.persona] || PERSONAS.yan;
 
@@ -251,6 +262,7 @@ export function App() {
             onClearAll={onClearAll}
             onExport={onExport}
             onNavigate={setRoute}
+            installPrompt={installPrompt}
           />
         )}
         {route === 'search' && (

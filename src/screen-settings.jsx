@@ -12,7 +12,7 @@ import { PROVIDERS, fetchModels as aiFetchModels } from './ai.js';
 
 const META_SALT = 'biji-master-v1';
 
-export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate }) {
+export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate, installPrompt }) {
   const T = TOKENS, I = ICONS;
 
   const [showPersona, setShowPersona] = useState(false);
@@ -405,6 +405,30 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
             value="谨慎" accent="#a13a30"
             onClick={onClearAll} last />
         </Section>
+
+        {installPrompt && (
+          <Section title="应用">
+            <button onClick={async () => {
+              installPrompt.prompt();
+              const { outcome } = await installPrompt.userChoice;
+              if (outcome === 'accepted') showToast('正在安装…');
+            }} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              width: '100%', padding: '12px 14px',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: T.fontSerif, fontSize: 14, color: 'var(--seal)',
+              borderBottom: 'none',
+            }}>
+              <span style={{
+                width: 28, height: 28, borderRadius: 7,
+                background: 'var(--seal-tint)', color: 'var(--seal)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 14, fontWeight: 600, flexShrink: 0,
+              }}>+</span>
+              安装砚到桌面
+            </button>
+          </Section>
+        )}
 
         <div style={{
           textAlign: 'center', padding: '20px 0 10px',
