@@ -1,17 +1,18 @@
 // app.jsx — main React shell, routing, global state.
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { TOKENS, PERSONAS } from './tokens.jsx';
 import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
-import { ListScreen } from './screen-list.jsx';
-import { DetailScreen } from './screen-detail.jsx';
-import { YanScreen } from './screen-yan.jsx';
-import { SettingsScreen } from './screen-settings.jsx';
-import { SearchScreen } from './screen-search.jsx';
-import { TagsScreen } from './screen-tags.jsx';
-import { TrashScreen } from './screen-trash.jsx';
+
+const ListScreen = React.lazy(() => import('./screen-list.jsx').then(m => ({ default: m.ListScreen })));
+const DetailScreen = React.lazy(() => import('./screen-detail.jsx').then(m => ({ default: m.DetailScreen })));
+const YanScreen = React.lazy(() => import('./screen-yan.jsx').then(m => ({ default: m.YanScreen })));
+const SettingsScreen = React.lazy(() => import('./screen-settings.jsx').then(m => ({ default: m.SettingsScreen })));
+const SearchScreen = React.lazy(() => import('./screen-search.jsx').then(m => ({ default: m.SearchScreen })));
+const TagsScreen = React.lazy(() => import('./screen-tags.jsx').then(m => ({ default: m.TagsScreen })));
+const TrashScreen = React.lazy(() => import('./screen-trash.jsx').then(m => ({ default: m.TrashScreen })));
 
 export function App() {
   const [notes, setNotes] = useState([]);
@@ -222,68 +223,70 @@ export function App() {
             onGoSettings={() => { setShowSetupHint(false); setRoute('settings'); }}
           />
         )}
-        {route === 'list' && (
-          <ListScreen
-            notes={notes}
-            initialFilter={listInitialFilter}
-            density={settings.density}
-            onOpenNote={openNote}
-            onSearch={goSearch}
-            onTags={goTags}
-            onCompose={() => setRoute('capture')}
-          />
-        )}
-        {route === 'detail' && openNote_ && (
-          <DetailScreen
-            note={openNote_}
-            allNotes={notes}
-            onBack={() => setRoute('list')}
-            onUpdate={updateNote}
-            onDelete={deleteNote}
-            persona={persona}
-          />
-        )}
-        {route === 'yan' && (
-          <YanScreen notes={notes} persona={persona} />
-        )}
-        {route === 'settings' && (
-          <SettingsScreen
-            settings={settings}
-            persona={persona}
-            totalNotes={notes.length}
-            onChange={setSettings}
-            onResetSeed={onResetSeed}
-            onClearAll={onClearAll}
-            onExport={onExport}
-            onNavigate={setRoute}
-            installPrompt={installPrompt}
-          />
-        )}
-        {route === 'search' && (
-          <SearchScreen
-            notes={notes}
-            onBack={() => setRoute('list')}
-            onOpenNote={openNote}
-            persona={persona}
-          />
-        )}
-        {route === 'tags' && (
-          <TagsScreen
-            notes={notes}
-            onBack={() => setRoute('list')}
-            persona={persona}
-            onPickTag={(label) => {
-              setFilterTag(label);
-              setRoute('list');
-            }}
-          />
-        )}
-        {route === 'trash' && (
-          <TrashScreen
-            onBack={() => setRoute('settings')}
-            onRefresh={() => setNotes(Store.getNotes())}
-          />
-        )}
+        <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'var(--font-serif)', color: 'var(--ink-mute)' }}>加载中…</div>}>
+          {route === 'list' && (
+            <ListScreen
+              notes={notes}
+              initialFilter={listInitialFilter}
+              density={settings.density}
+              onOpenNote={openNote}
+              onSearch={goSearch}
+              onTags={goTags}
+              onCompose={() => setRoute('capture')}
+            />
+          )}
+          {route === 'detail' && openNote_ && (
+            <DetailScreen
+              note={openNote_}
+              allNotes={notes}
+              onBack={() => setRoute('list')}
+              onUpdate={updateNote}
+              onDelete={deleteNote}
+              persona={persona}
+            />
+          )}
+          {route === 'yan' && (
+            <YanScreen notes={notes} persona={persona} />
+          )}
+          {route === 'settings' && (
+            <SettingsScreen
+              settings={settings}
+              persona={persona}
+              totalNotes={notes.length}
+              onChange={setSettings}
+              onResetSeed={onResetSeed}
+              onClearAll={onClearAll}
+              onExport={onExport}
+              onNavigate={setRoute}
+              installPrompt={installPrompt}
+            />
+          )}
+          {route === 'search' && (
+            <SearchScreen
+              notes={notes}
+              onBack={() => setRoute('list')}
+              onOpenNote={openNote}
+              persona={persona}
+            />
+          )}
+          {route === 'tags' && (
+            <TagsScreen
+              notes={notes}
+              onBack={() => setRoute('list')}
+              persona={persona}
+              onPickTag={(label) => {
+                setFilterTag(label);
+                setRoute('list');
+              }}
+            />
+          )}
+          {route === 'trash' && (
+            <TrashScreen
+              onBack={() => setRoute('settings')}
+              onRefresh={() => setNotes(Store.getNotes())}
+            />
+          )}
+        </Suspense>
 
         {/* Bottom nav — hidden on detail/search/tags/onboard */}
         {['capture', 'list', 'yan', 'settings'].includes(route) && (
