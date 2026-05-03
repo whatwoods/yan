@@ -74,6 +74,9 @@ export function serialize(note) {
 export function deserialize(md, filePath) {
   const { data, content } = parseFrontmatter(md);
 
+  // Defensive: if tags is a string (e.g. inline array parse failure), wrap in array
+  if (typeof data.tags === 'string') data.tags = [data.tags];
+
   // Convert bare string tags to {label, color} objects
   const tags = (data.tags || []).map(t => {
     if (typeof t === 'string') return { label: t, color: TAG_COLORS[t] || 'ink' };
@@ -177,6 +180,10 @@ function parseYAMLValue(val) {
   if (val === 'true') return true;
   if (val === 'false') return false;
   if (val === 'null' || val === '~' || val === '') return null;
+  // Inline array: [a, b, c] or ['hello', "world"]
+  if (val.startsWith('[') && val.endsWith(']')) {
+    return parseInlineArray(val.slice(1, -1));
+  }
   if (/^-?\d+$/.test(val)) return parseInt(val, 10);
   if (/^-?\d+\.\d+$/.test(val)) return parseFloat(val);
   // Remove surrounding quotes
@@ -185,6 +192,33 @@ function parseYAMLValue(val) {
     return val.slice(1, -1);
   }
   return val;
+}
+
+function parseInlineArray(inner) {
+  const trimmed = inner.trim();
+  if (trimmed === '') return [];
+  const items = [];
+  let current = '';
+  let inQuote = null;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (inQuote) {
+      if (ch === inQuote) {
+        inQuote = null;
+      } else {
+        current += ch;
+      }
+    } else if (ch === "'" || ch === '"') {
+      inQuote = ch;
+    } else if (ch === ',') {
+      items.push(parseYAMLValue(current.trim()));
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  items.push(parseYAMLValue(current.trim()));
+  return items;
 }
 
 // ── Simple YAML serializer ───────────────────────────────────
