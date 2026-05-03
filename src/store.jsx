@@ -1,4 +1,6 @@
-// store.js — localStorage-backed notes + settings, plus client-side AI tagging.
+// store.jsx — localStorage-backed notes + settings, plus client-side AI tagging.
+
+import { formatRelative } from './tokens.jsx';
 
 const STORAGE_NOTES = 'biji.notes.v1';
 const STORAGE_SETTINGS = 'biji.settings.v1';
@@ -25,7 +27,7 @@ const TAG_DICT = [
 
 const PEOPLE_HINT = /([一-龥])(姐|哥|弟|妹|姨|叔|爸|妈|总|先生|女士)|@([一-龥\w]+)/g;
 
-function autoTags(body) {
+export function autoTags(body) {
   const text = (body || '').toLowerCase();
   const found = [];
   for (const t of TAG_DICT) {
@@ -38,7 +40,7 @@ function autoTags(body) {
   return found;
 }
 
-function autoTitle(body) {
+export function autoTitle(body) {
   if (!body) return '无字';
   const firstLine = body.trim().split(/\n/)[0];
   if (firstLine.length <= 18) return firstLine;
@@ -47,14 +49,14 @@ function autoTitle(body) {
   return trimmed + '…';
 }
 
-function autoSummary(body) {
+export function autoSummary(body) {
   if (!body) return '';
   const compact = body.replace(/\s+/g, ' ').trim();
   if (compact.length <= 32) return compact;
   return compact.slice(0, 32) + '…';
 }
 
-function extractPeople(body) {
+export function extractPeople(body) {
   const set = new Set();
   let m;
   PEOPLE_HINT.lastIndex = 0;
@@ -137,7 +139,7 @@ function seedNotes() {
   ];
 }
 
-const Store = {
+export const Store = {
   // ── notes ─────────────────────────────────────────
   loadNotes() {
     const stored = loadJSON(STORAGE_NOTES, null);
@@ -184,14 +186,8 @@ const Store = {
   markRun() { saveJSON(STORAGE_FIRST_RUN, false); },
 };
 
-window.Store = Store;
-window.autoTags = autoTags;
-window.autoTitle = autoTitle;
-window.autoSummary = autoSummary;
-window.extractPeople = extractPeople;
-
 // ── chat with 砚 — generates plausible responses based on memory ─────
-window.askYan = function (question, notes) {
+export function askYan(question, notes) {
   const q = question.toLowerCase();
   const matched = notes.filter((n) => {
     const hay = (n.title + ' ' + n.body + ' ' + (n.tags || []).map(t => t.label).join(' ')).toLowerCase();
@@ -213,7 +209,7 @@ window.askYan = function (question, notes) {
   const tagLine = topTags.length ? `多与 ${topTags.map(([l]) => `「${l}」`).join('、')} 有关。` : '';
 
   return {
-    text: `翻了你的 ${notes.length} 篇笔记，找到 ${matched.length} 条相关的。${tagLine}最近一次是${window.formatRelative(matched[0].createdAt)}：「${matched[0].title}」。`,
-    refs: matched.map((n) => ({ id: n.id, title: n.title, when: window.formatRelative(n.createdAt) })),
+    text: `翻了你的 ${notes.length} 篇笔记，找到 ${matched.length} 条相关的。${tagLine}最近一次是${formatRelative(matched[0].createdAt)}：「${matched[0].title}」。`,
+    refs: matched.map((n) => ({ id: n.id, title: n.title, when: formatRelative(n.createdAt) })),
   };
-};
+}

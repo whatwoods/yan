@@ -1,6 +1,9 @@
-// components.js — Shared visual primitives: SealStamp, BrushTitle, Tag, BottomNav, Toast, KindBadge.
+// components.jsx — Shared visual primitives: SealStamp, BrushTitle, Tag, BottomNav, Toast, KindBadge.
 
-function SealStamp({ text = '砚', size = 36, rotate = -6, color }) {
+import React, { useState, useCallback, useEffect } from 'react';
+import { ICONS } from './icons.jsx';
+
+export function SealStamp({ text = '砚', size = 36, rotate = -6, color }) {
   return (
     <div className="stamp" style={{
       width: size, height: size, fontSize: size * 0.5,
@@ -11,13 +14,13 @@ function SealStamp({ text = '砚', size = 36, rotate = -6, color }) {
   );
 }
 
-function BrushTitle({ children, size = 26, color, style }) {
+export function BrushTitle({ children, size = 26, color, style }) {
   return (
     <h1 className="brush" style={{ fontSize: size, color: color || 'var(--ink)', ...style }}>{children}</h1>
   );
 }
 
-function Tag({ label, color = 'ink', size = 'md', onClick, style }) {
+export function Tag({ label, color = 'ink', size = 'md', onClick, style }) {
   return (
     <span
       className={`tag ${color} ${size === 'sm' ? 'sm' : ''}`}
@@ -29,8 +32,8 @@ function Tag({ label, color = 'ink', size = 'md', onClick, style }) {
   );
 }
 
-function KindBadge({ kind, dur }) {
-  const I = window.ICONS;
+export function KindBadge({ kind, dur }) {
+  const I = ICONS;
   const map = {
     text:  { icon: <I.pen size={11} />,    cls: 'ink',    label: '文字' },
     voice: { icon: <I.mic size={11} />,    cls: 'bamboo', label: dur || '语音' },
@@ -44,8 +47,8 @@ function KindBadge({ kind, dur }) {
   );
 }
 
-function BottomNav({ active, onChange }) {
-  const I = window.ICONS;
+export function BottomNav({ active, onChange }) {
+  const I = ICONS;
   const items = [
     ['capture',  '记', I.pen],
     ['list',     '本', I.book],
@@ -65,14 +68,20 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-// Toast — call window.showToast('text').
-function ToastHost({ children }) {
-  const [msg, setMsg] = React.useState(null);
-  const show = React.useCallback((text) => {
+// Toast — call showToast('text') or window.showToast('text').
+export function showToast(text) {
+  if (typeof window.showToast === 'function') {
+    window.showToast(text);
+  }
+}
+
+export function ToastHost({ children }) {
+  const [msg, setMsg] = useState(null);
+  const show = useCallback((text) => {
     setMsg(text);
     setTimeout(() => setMsg((m) => (m === text ? null : m)), 1800);
   }, []);
-  React.useEffect(() => { window.showToast = show; }, [show]);
+  useEffect(() => { window.showToast = show; }, [show]);
   return (
     <>
       {children}
@@ -82,7 +91,7 @@ function ToastHost({ children }) {
 }
 
 // Header used across screens
-function ScrHead({ title, right, brushSize = 26, sub }) {
+export function ScrHead({ title, right, brushSize = 26, sub }) {
   return (
     <div className="scr-head">
       <div>
@@ -93,11 +102,3 @@ function ScrHead({ title, right, brushSize = 26, sub }) {
     </div>
   );
 }
-
-window.SealStamp = SealStamp;
-window.BrushTitle = BrushTitle;
-window.Tag = Tag;
-window.KindBadge = KindBadge;
-window.BottomNav = BottomNav;
-window.ToastHost = ToastHost;
-window.ScrHead = ScrHead;
