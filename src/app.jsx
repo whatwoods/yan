@@ -180,6 +180,9 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  // ── Derived state (must be before any early returns) ──────
+  const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
+
   // ── Loading screen ───────────────────────────────────────
   if (loading) {
     return (
@@ -196,9 +199,6 @@ export function App() {
       </ToastHost>
     );
   }
-
-  // ── Render ───────────────────────────────────────────────
-  const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
 
   // First-run takeover
   if (route === 'onboard') {
