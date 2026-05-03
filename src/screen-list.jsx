@@ -46,6 +46,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   const [categories, setCategories] = useState([]);
   const [syncStatus, setSyncStatus] = useState('synced');
   const [syncing, setSyncing] = useState(false);
+  const [conflictCount, setConflictCount] = useState(0);
   const scrollRef = useRef(null);
   const pullRef = useRef({ startY: 0, pulling: false });
 
@@ -55,8 +56,12 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   useEffect(() => {
     const loadStatus = async () => {
       try {
-        const status = await getMeta('syncStatus');
+        const [status, conflicts] = await Promise.all([
+          getMeta('syncStatus'),
+          getMeta('conflictCount'),
+        ]);
         if (status) setSyncStatus(status);
+        if (conflicts) setConflictCount(conflicts);
       } catch {}
     };
     loadStatus();
@@ -81,17 +86,20 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
     if (syncing) return;
     setSyncing(true);
     try {
-      const settings = Store.loadSettings?.() || {};
       const savedWebdav = await getMeta('webdavConfig');
       if (savedWebdav?.server && savedWebdav?.username) {
         initWebDAV(savedWebdav);
         const allNotes = Store.getAllCachedNotes();
-        const result = await syncAll(allNotes);
+        const cats = categories.length ? categories : await Store.getCategories();
+        const result = await syncAll(allNotes, { categories: cats });
         if (result.error) {
           showToast('同步失败 · 请检查 WebDAV 配置');
         } else {
           await setMeta('lastSync', new Date().toISOString());
           showToast('已同步');
+          if (result.conflicts.length > 0) {
+            setConflictCount(result.conflicts.length);
+          }
         }
       } else {
         showToast('请先配置 WebDAV');
@@ -100,8 +108,9 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
       showToast('同步失败 · 请检查 WebDAV 配置');
     } finally {
       setSyncing(false);
-      const status = await getMeta('syncStatus');
+      const [status, conflicts] = await Promise.all([getMeta('syncStatus'), getMeta('conflictCount')]);
       if (status) setSyncStatus(status);
+      if (conflicts) setConflictCount(conflicts);
     }
   }, [syncing]);
 
@@ -194,6 +203,23 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
           <button className="icon-btn" onClick={onTags} aria-label="标签"><I.tag size={20} /></button>
         </>
       } />
+
+      {/* Conflict banner */}
+      {conflictCount > 0 && (
+        <div style={{
+          margin: '0 20px 8px', padding: '8px 12px',
+          background: 'rgba(200,147,66,.1)', border: '1px solid rgba(200,147,66,.25)',
+          borderRadius: 10, fontSize: 12, color: 'var(--ochre)',
+          fontFamily: T.fontSerif, display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontWeight: 600 }}>{conflictCount} 条冲突</span>
+          <span style={{ color: 'var(--ink-mute)' }}>已保存到 /biji/conflicts/</span>
+          <button onClick={() => setConflictCount(0)} style={{
+            marginLeft: 'auto', background: 'none', border: 'none',
+            color: 'var(--ink-fade)', cursor: 'pointer', fontSize: 14,
+          }}>×</button>
+        </div>
+      )}
 
       {/* Category tabs */}
       {categories.length > 0 && (

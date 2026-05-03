@@ -162,19 +162,31 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     try {
       initWebDAV(webdavConfig);
       const allNotes = Store.getAllCachedNotes();
-      const result = await syncAll(allNotes);
-      const now = new Date().toISOString();
-      await setMeta('lastSync', now);
-      setWebdavStatus({ lastSync: now, syncing: false });
+      // Collect extra data for non-note sync
+      const insights = new Map();
+      const now = new Date();
+      const insightKey = `insight:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const savedInsight = await getMeta(insightKey);
+      if (savedInsight?.text) {
+        insights.set(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`, savedInsight.text);
+      }
+      const result = await syncAll(allNotes, {
+        categories,
+        insights,
+        preferences: settings,
+      });
+      const syncNow = new Date().toISOString();
+      await setMeta('lastSync', syncNow);
+      setWebdavStatus({ lastSync: syncNow, syncing: false, conflicts: result.conflicts.length });
       showToast(`同步完成: ${result.synced} 条`);
       if (result.conflicts.length > 0) {
-        showToast(`${result.conflicts.length} 条冲突待处理`);
+        showToast(`${result.conflicts.length} 条冲突已保存到 /biji/conflicts/`);
       }
     } catch (e) {
       setWebdavStatus(prev => ({ ...prev, syncing: false }));
       showToast('同步失败: ' + e.message);
     }
-  }, [webdavConfig]);
+  }, [webdavConfig, categories, settings]);
 
   // ── Master password handlers ────────────────────────────────
   const handleSetMasterPassword = useCallback(async (password) => {
