@@ -42,6 +42,8 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   const [showCatSheet, setShowCatSheet] = useState(false);
   const [editingCat, setEditingCat] = useState(null); // null = adding new
 
+  const secretsLocked = masterPasswordSet && !secretsUnlocked;
+
   // Load persisted configs from meta on mount
   useEffect(() => {
     (async () => {
@@ -54,10 +56,10 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           SecretsStore.isSetup(),
           getModelAssignment(),
         ]);
-        if (savedAi) setAiConfig(savedAi);
+        if (savedAi) setAiConfig(prev => ({ ...prev, ...savedAi, apiKey: savedAi.apiKey || '' }));
         if (savedAssignment) setModelAssignment(savedAssignment);
         if (savedWebdav) {
-          setWebdavConfig(savedWebdav);
+          setWebdavConfig(prev => ({ ...prev, ...savedWebdav, password: savedWebdav.password || '' }));
           // Skip initWebDAV when password is encrypted but not yet unlocked
           if (savedWebdav.server && savedWebdav.username && !(hasPw && !SecretsStore.isUnlocked())) {
             initWebDAV(savedWebdav);
@@ -89,6 +91,9 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         apiKey: config.apiKey,
         webdavPassword: SecretsStore.get('webdavPassword') || '',
       });
+      const { apiKey, ...safe } = config;
+      await setMeta('aiConfig', safe);
+    } else if (masterPasswordSet) {
       const { apiKey, ...safe } = config;
       await setMeta('aiConfig', safe);
     } else {
@@ -131,15 +136,22 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       });
       const { password, ...safe } = config;
       await setMeta('webdavConfig', safe);
+    } else if (masterPasswordSet) {
+      const { password, ...safe } = config;
+      await setMeta('webdavConfig', safe);
     } else {
       await setMeta('webdavConfig', config);
     }
-    if (config.server && config.username) {
+    if (config.server && config.username && (!masterPasswordSet || secretsUnlocked)) {
       initWebDAV(config);
     }
   }, [masterPasswordSet, secretsUnlocked]);
 
   const handleWebdavTest = useCallback(async () => {
+    if (secretsLocked) {
+      setShowUnlockSheet(true);
+      return;
+    }
     setWebdavTesting(true);
     try {
       const result = await testConnection(webdavConfig);
@@ -153,9 +165,13 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     } finally {
       setWebdavTesting(false);
     }
-  }, [webdavConfig]);
+  }, [webdavConfig, secretsLocked]);
 
   const handleSync = useCallback(async () => {
+    if (secretsLocked) {
+      setShowUnlockSheet(true);
+      return;
+    }
     if (!webdavConfig.server) {
       showToast('请先配置 WebDAV');
       return;
@@ -201,10 +217,15 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       setWebdavStatus(prev => ({ ...prev, syncing: false }));
       showToast('同步失败: ' + e.message);
     }
-  }, [webdavConfig, categories, settings]);
+  }, [webdavConfig, categories, settings, secretsLocked]);
 
   // ── Master password handlers ────────────────────────────────
   const handleSetMasterPassword = useCallback(async (password) => {
+    if (masterPasswordSet && !secretsUnlocked) {
+      setShowMasterPwSheet(false);
+      setShowUnlockSheet(true);
+      return false;
+    }
     if (password.length < 8) {
       showToast('密码至少 8 位');
       return false;
@@ -236,7 +257,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       showToast('设置失败: ' + e.message);
       return false;
     }
-  }, [aiConfig, webdavConfig]);
+  }, [aiConfig, webdavConfig, masterPasswordSet, secretsUnlocked]);
 
   const handleUnlock = useCallback(async (password) => {
     const ok = await SecretsStore.unlock(password);
@@ -250,7 +271,13 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     const key = SecretsStore.get('apiKey');
     if (key) setAiConfig(prev => ({ ...prev, apiKey: key }));
     const pw = SecretsStore.get('webdavPassword');
-    if (pw) setWebdavConfig(prev => ({ ...prev, password: pw }));
+    if (pw) {
+      setWebdavConfig(prev => {
+        const next = { ...prev, password: pw };
+        if (next.server && next.username) initWebDAV(next);
+        return next;
+      });
+    }
     showToast('已解锁');
     return true;
   }, []);
@@ -442,17 +469,22 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
               style={inputStyle(T)}
             />
           </div>
-          <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>密码</div>
-            <input
-              type="password"
-              value={webdavConfig.password}
-              onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
-              onBlur={() => saveWebdavConfig(webdavConfig)}
-              placeholder="******"
-              style={inputStyle(T)}
-            />
-          </div>
+          {secretsLocked ? (
+            <Row icon={<I.pin size={14} />} label="密码已加密"
+              value="点击解锁" onClick={() => setShowUnlockSheet(true)} />
+          ) : (
+            <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>密码</div>
+              <input
+                type="password"
+                value={webdavConfig.password}
+                onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
+                onBlur={() => saveWebdavConfig(webdavConfig)}
+                placeholder="******"
+                style={inputStyle(T)}
+              />
+            </div>
+          )}
           <Row
             icon={<I.bolt size={14} />}
             label={webdavTesting ? '测试中...' : '测试连接'}
@@ -481,7 +513,13 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
             icon={<I.pin size={14} />}
             label={masterPasswordSet ? '修改主密码' : '设置主密码'}
             value={masterPasswordSet ? (secretsUnlocked ? '已解锁' : '已锁定') : '未设置'}
-            onClick={() => setShowMasterPwSheet(true)}
+            onClick={() => {
+              if (masterPasswordSet && !secretsUnlocked) {
+                setShowUnlockSheet(true);
+                return;
+              }
+              setShowMasterPwSheet(true);
+            }}
           />
           {masterPasswordSet && (
             <Row
