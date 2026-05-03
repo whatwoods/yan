@@ -7,12 +7,25 @@ import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
 import { generateInsight, getAIConfig } from './ai.js';
 import { getMeta, setMeta } from './db.js';
+import { Store } from './store.jsx';
 import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCuratorSuggestion, rejectCuratorSuggestion } from './curator.js';
 import { askYanRAG } from './rag.js';
 
 export function YanScreen({ notes, persona }) {
   const T = TOKENS, I = ICONS;
   const [chatOpen, setChatOpen] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [existingTags, setExistingTags] = useState([]);
+
+  useEffect(() => {
+    Store.getCategories().then(setCategories).catch(() => {});
+    const counts = {};
+    notes.forEach(n => (n.tags || []).forEach(t => {
+      const label = typeof t === 'string' ? t : t.label;
+      counts[label] = (counts[label] || 0) + 1;
+    }));
+    setExistingTags(Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k]) => k));
+  }, [notes]);
 
   return (
     <div className="screen paper">
@@ -145,7 +158,7 @@ function YanInsightBody({ notes, persona }) {
       if (!shouldRun) return;
       setCuratorLoading(true);
       try {
-        const suggestions = await generateCuratorSuggestions(notes);
+        const suggestions = await generateCuratorSuggestions(notes, categories);
         setCuratorSuggestions(suggestions);
         await markCuratorRun(notes);
       } catch {
@@ -437,7 +450,7 @@ function YanChatBody({ notes, persona }) {
         const aiConfig = await getAIConfig();
         let result;
         if (aiConfig.apiKey) {
-          result = await askYanRAG(q, notes);
+          result = await askYanRAG(q, notes, categories, existingTags);
         } else {
           result = askYan(q, notes);
         }

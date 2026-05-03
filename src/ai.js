@@ -21,9 +21,14 @@ export const TASK_LABELS = {
   classify: '分类', tag: '打标签', summarize: '摘要', insight: '月度洞察', ask: '问砚', curator: '标签整理',
 };
 
+// ── 砚的语气基线（所有生成型 prompt 共用）─────────────────────
+
+export const YAN_PERSONA = '你是「砚」，一枚安静的小印章。说话短句、不啰嗦、不抒情、不评判。不用感叹号，不用"亲爱的""加油""建议""应该"。像在纸上写字，宋体气。';
+
+// ── Config helpers ────────────────────────────────────────────
+
 export async function getAIConfig() {
   const config = (await getMeta('aiConfig')) || { provider: null, apiKey: null, endpoint: null, models: [], defaultModel: '' };
-  // If master password is set, API key is stored encrypted — use SecretsStore
   const secretKey = SecretsStore.get('apiKey');
   if (secretKey) config.apiKey = secretKey;
   return config;
@@ -48,13 +53,23 @@ export async function fetchModels(endpoint, apiKey) {
   }
 }
 
-export async function chatCompletion(task, messages, { temperature = 0.3, maxTokens = 500 } = {}) {
+// ── Core completion ───────────────────────────────────────────
+
+/**
+ * @param {string} task — task key for model assignment
+ * @param {Array} messages — chat messages
+ * @param {object} opts — { temperature, maxTokens, jsonMode }
+ */
+export async function chatCompletion(task, messages, { temperature = 0.3, maxTokens = 500, jsonMode = false } = {}) {
   const config = await getAIConfig();
   const assignment = await getModelAssignment();
   if (!config.apiKey || !config.endpoint) return null;
 
   const model = assignment[task] || config.defaultModel || '';
   if (!model) return null;
+
+  const body = { model, messages, temperature, max_tokens: maxTokens };
+  if (jsonMode) body.response_format = { type: 'json_object' };
 
   try {
     const res = await fetch(`${config.endpoint}/chat/completions`, {
@@ -63,7 +78,7 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
@@ -73,21 +88,36 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
   }
 }
 
+// ── Task prompts ──────────────────────────────────────────────
+
 export async function classifyNote(body, categories) {
-  const catNames = categories.map(c => c.name).join('、');
+  const catDefs = categories.map(c => {
+    const hint = CATEGORY_HINTS[c.name] || '';
+    return `- ${c.name}${hint ? '：' + hint : ''}`;
+  }).join('\n');
+
   const result = await chatCompletion('classify', [
-    { role: 'system', content: '你是笔记分类器。只回复分类名，不要其他内容。' },
-    { role: 'user', content: `从以下分类中选择最适合的一个，只回复分类名：${catNames}\n\n笔记：${body.slice(0, 200)}` },
-  ], { temperature: 0.1, maxTokens: 20 });
+    { role: 'system', content: `${YAN_PERSONA}\n你是笔记分类器。只回复分类名，不解释。选最强相关的那一个，不要勉强。实在分不出就回复「想法」。` },
+    { role: 'user', content: `可选分类与边界：\n${catDefs}\n\n笔记：\n${body.slice(0, 600)}` },
+  ], { temperature: 0.1, maxTokens: 8 });
+
   if (result && categories.some(c => c.name === result.trim())) return result.trim();
   return null;
 }
 
-export async function extractTagsAndPeople(body) {
+const CATEGORY_HINTS = {
+  '学习': '知识获取、读书、课程、研究',
+  '工作': '职业事务、会议、决策、复盘',
+  '生活': '日常、人事、感受、健康',
+  '想法': '未成形的灵感、不知归处的念头',
+};
+
+export async function extractTagsAndPeople(body, existingTags = [], existingPeople = []) {
   const result = await chatCompletion('tag', [
-    { role: 'system', content: '你是笔记标签和人名提取器。只回复 JSON，不要其他内容。' },
-    { role: 'user', content: `提取标签（最多5个）和人名。回复 JSON：{"tags":["标签1"],"people":["人名1"]}\n\n笔记：${body.slice(0, 300)}` },
-  ], { temperature: 0.2, maxTokens: 100 });
+    { role: 'system', content: `${YAN_PERSONA}\n你是标签提取器。输出 JSON：{"tags":[字符串],"people":[字符串]}。\n- tags 3-5 个，优先复用已有标签，不要造同义变体\n- people 只列明确指代的人，没有就空数组\n- 不要把分类名当 tag` },
+    { role: 'user', content: `已有标签库（优先用这些）：\n${existingTags.slice(0, 50).join('、') || '（暂无）'}\n\n历史出现过的人：\n${existingPeople.slice(0, 30).join('、') || '（暂无）'}\n\n笔记：\n${body.slice(0, 800)}` },
+  ], { temperature: 0.2, maxTokens: 120, jsonMode: true });
+
   try {
     if (!result) return { tags: [], people: [] };
     const parsed = JSON.parse(result);
@@ -99,22 +129,69 @@ export async function extractTagsAndPeople(body) {
 
 export async function generateSummary(body) {
   const result = await chatCompletion('summarize', [
-    { role: 'system', content: '用一句话（不超过20字）概括笔记核心。只回复摘要。' },
-    { role: 'user', content: body.slice(0, 300) },
-  ], { temperature: 0.3, maxTokens: 50 });
+    { role: 'system', content: `${YAN_PERSONA}\n用第一人称视角（"作者"），25-40 字概括这条笔记的核心。抓事实，不抒情。不要照搬原句，不要加前缀。` },
+    { role: 'user', content: body.slice(0, 600) },
+  ], { temperature: 0.3, maxTokens: 60 });
   return result?.trim() || null;
 }
 
 export async function generateInsight(monthNotes, monthLabel) {
-  const notesContext = monthNotes.slice(0, 30).map((n, i) => {
-    const tags = (n.tags || []).map(t => t.label).join(',');
-    const date = new Date(n.createdAt || n.created).toLocaleDateString('zh-CN');
-    return `${i + 1}. [${date}] ${n.title || '(无题)'} #${tags} ${n.body?.slice(0, 60) || ''}`;
+  // 本地算硬数据
+  const stats = computeMonthStats(monthNotes);
+
+  // 候选笔记精简为 {title, summary, tags, date} 省 token
+  const condensed = monthNotes.slice(0, 30).map((n, i) => {
+    const tags = (n.tags || []).map(t => typeof t === 'string' ? t : t.label).join('、');
+    const date = (n.createdAt || n.created || '').slice(0, 10);
+    return `${i + 1}. [${date}] ${n.title || '(无题)'} #${tags} — ${n.summary || n.body?.slice(0, 60) || ''}`;
   }).join('\n');
 
   const result = await chatCompletion('insight', [
-    { role: 'system', content: '你是笔记洞察分析师。用简洁中文总结本月笔记，100字以内。包括：主题趋势、思维模式、值得关注的点。语气温暖、有洞察力。' },
-    { role: 'user', content: `${monthLabel}共 ${monthNotes.length} 条笔记：\n${notesContext}` },
-  ], { temperature: 0.5, maxTokens: 200 });
+    { role: 'system', content: `${YAN_PERSONA}\n用 150-200 字写本月小结，分两段：\n1. 第一段：事实（数字、变化、出现频次）\n2. 第二段：一句安静的观察或提问，不评判，不鸡汤\n\n数字用阿拉伯数字，重要词用「」包住。所有结论必须有依据，证据不足时直接说「这件事笔记里没看出来」。` },
+    { role: 'user', content: `本月数据：\n- 共 ${stats.count} 条，比上月 ${stats.delta}\n- 最常想：${stats.topTag || '无'}（${stats.topTagCount} 次）\n- 最常提：${stats.topPerson || '无'}\n- 思考最活跃时段：${stats.peakHour}\n- 主题分布：${stats.tagDistribution}\n\n代表笔记（按时间）：\n${condensed}` },
+  ], { temperature: 0.6, maxTokens: 400 });
   return result?.trim() || null;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+
+function computeMonthStats(notes) {
+  const tagCounts = {};
+  const personCounts = {};
+  const hourCounts = {};
+  let topTag = '', topTagCount = 0, topPerson = '';
+
+  for (const n of notes) {
+    for (const t of (n.tags || [])) {
+      const label = typeof t === 'string' ? t : t.label;
+      tagCounts[label] = (tagCounts[label] || 0) + 1;
+    }
+    for (const p of (n.people || [])) {
+      personCounts[p] = (personCounts[p] || 0) + 1;
+    }
+    const h = new Date(n.createdAt || n.created).getHours();
+    hourCounts[h] = (hourCounts[h] || 0) + 1;
+  }
+
+  for (const [k, v] of Object.entries(tagCounts)) {
+    if (v > topTagCount) { topTag = k; topTagCount = v; }
+  }
+  for (const [k, v] of Object.entries(personCounts)) {
+    if (!topPerson || v > (personCounts[topPerson] || 0)) topPerson = k;
+  }
+
+  const peakHour = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0];
+  const peakLabel = peakHour ? `${peakHour[0]}:00` : '—';
+
+  const tagDist = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([k, v]) => `${k}(${v})`).join('、');
+
+  return {
+    count: notes.length,
+    delta: '—', // 上月数据需要外部传入
+    topTag, topTagCount,
+    topPerson,
+    peakHour: peakLabel,
+    tagDistribution: tagDist || '—',
+  };
 }
