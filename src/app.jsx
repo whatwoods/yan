@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { TOKENS, PERSONAS } from './tokens.jsx';
-import { Store, autoTitle, autoTags, autoSummary, extractPeople } from './store.jsx';
+import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
 import { ListScreen } from './screen-list.jsx';
@@ -81,20 +81,28 @@ export function App() {
       createdAt: Date.now(),
     };
 
-    await Store.addNote(note);
+    const addedNote = await Store.addNote(note);
     setNotes(Store.getNotes());
-
-    // Simulate background AI: refine summary after a short delay
-    const addedNote = Store.getNotes()[0]; // just-added note is first
-    setTimeout(async () => {
-      if (addedNote) {
-        await Store.updateNote(addedNote.id, { summary: autoSummary(body) });
-        setNotes(Store.getNotes());
-        showToast(`${persona.name}已识其要意`);
-      }
-    }, 900);
-
     showToast('已收');
+
+    // AI processing with 1.5s debounce
+    setTimeout(async () => {
+      const categories = await Store.getCategories();
+      const aiResult = await processNoteWithAI(addedNote, categories);
+      if (aiResult) {
+        await Store.updateNote(addedNote.id, aiResult);
+      } else {
+        // Rule-based fallback
+        await Store.updateNote(addedNote.id, {
+          category: addedNote.category || '想法',
+          tags: autoTags(body),
+          summary: autoSummary(body),
+          people: extractPeople(body),
+        });
+      }
+      setNotes(Store.getNotes());
+      showToast(`${persona.name}已识其要意`);
+    }, 1500);
   }, [settings.autoTag, persona.name]);
 
   const updateNote = useCallback(async (id, patch) => {

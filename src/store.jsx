@@ -8,6 +8,7 @@ import {
 } from './db.js';
 import { migrate } from './migrate.js';
 import { generateId } from './note-format.js';
+import { classifyNote, extractTagsAndPeople, generateSummary } from './ai.js';
 
 const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
 
@@ -84,6 +85,29 @@ export function extractPeople(body) {
     else if (m[1] && m[2]) set.add(m[1] + m[2]);
   }
   return [...set];
+}
+
+/**
+ * Run AI classify/tag/summarize pipeline on a note.
+ * Returns a patch object or null (caller should fall back to rule-based).
+ */
+export async function processNoteWithAI(note, categories) {
+  try {
+    const [category, tagResult, summary] = await Promise.all([
+      classifyNote(note.body, categories),
+      extractTagsAndPeople(note.body),
+      generateSummary(note.body),
+    ]);
+    return {
+      category: category || note.category || '想法',
+      tags: tagResult.tags.length ? tagResult.tags.map(t => ({ label: t, color: 'ink' })) : note.tags,
+      people: tagResult.people.length ? tagResult.people : note.people,
+      summary: summary || note.summary,
+      ai: summary ? { summary, generated_at: new Date().toISOString(), model: 'ai' } : note.ai,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ── localStorage helpers (for first-run flag only) ───────────
