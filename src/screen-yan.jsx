@@ -98,6 +98,7 @@ function YanInsightBody({ notes, persona }) {
 
   const [aiInsight, setAiInsight] = useState(null);
   const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState(false);
   const [aiReady, setAiReady] = useState(false);
 
   // Load persisted insight and check AI config on mount
@@ -115,15 +116,18 @@ function YanInsightBody({ notes, persona }) {
   const handleGenerateInsight = useCallback(async () => {
     if (monthNotes.length === 0) return;
     setInsightLoading(true);
+    setInsightError(false);
     try {
       const text = await generateInsight(monthNotes, monthLabel);
       if (text) {
         const insight = { text, generated_at: new Date().toISOString(), noteCount: monthNotes.length };
         await setMeta(insightKey, insight);
         setAiInsight(insight);
+      } else {
+        setInsightError(true);
       }
     } catch {
-      // silent fail
+      setInsightError(true);
     } finally {
       setInsightLoading(false);
     }
@@ -239,12 +243,14 @@ function YanInsightBody({ notes, persona }) {
             </div>
           ) : !insightLoading ? (
             <div style={{
-              fontSize: 12, color: 'var(--ink-fade)',
+              fontSize: 12, color: insightError ? 'var(--seal)' : 'var(--ink-fade)',
               fontFamily: T.fontSerif, lineHeight: 1.6,
             }}>
-              {monthNotes.length > 0
-                ? `本月有 ${monthNotes.length} 条笔记，点击上方按钮让 ${persona.name} 为你总结。`
-                : '本月还没有笔记。'}
+              {insightError
+                ? '上次生成失败 · 点击上方按钮重试'
+                : monthNotes.length > 0
+                  ? `本月有 ${monthNotes.length} 条笔记，点击上方按钮让 ${persona.name} 为你总结。`
+                  : '本月还没有笔记。'}
             </div>
           ) : null}
           {aiInsight?.generated_at && (
@@ -437,8 +443,12 @@ function YanChatBody({ notes, persona }) {
         }
         setMessages((m) => [...m, { role: 'assistant', text: result.text, refs: result.refs }]);
       } catch {
-        const fallback = askYan(q, notes);
-        setMessages((m) => [...m, { role: 'assistant', text: fallback.text, refs: fallback.refs }]);
+        // Show red error per spec §8.4, then offer rule-based fallback
+        setMessages((m) => [...m, {
+          role: 'assistant',
+          text: 'AI 连接失败，请检查网络和 API 配置。',
+          error: true,
+        }]);
       } finally {
         setThinking(false);
       }
@@ -462,8 +472,9 @@ function YanChatBody({ notes, persona }) {
         ) : (
           <div key={i} style={{ alignSelf: 'flex-start', maxWidth: '88%' }}>
             <div style={{
-              background: 'var(--paper-light)', color: 'var(--ink-soft)',
-              border: `1px solid var(--fold)`,
+              background: m.error ? 'rgba(184,68,58,.08)' : 'var(--paper-light)',
+              color: m.error ? 'var(--seal)' : 'var(--ink-soft)',
+              border: `1px solid ${m.error ? 'rgba(184,68,58,.25)' : 'var(--fold)'}`,
               padding: '12px 14px', borderRadius: '18px 18px 18px 4px',
               fontFamily: T.fontSerif, fontSize: 14, lineHeight: 1.65,
             }}>{m.text}</div>
