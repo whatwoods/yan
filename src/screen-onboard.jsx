@@ -19,8 +19,8 @@ export function OnboardingScreen({ onStart, persona }) {
 
       <div style={{ marginTop: 28 }}>
         <div style={{
-          fontFamily: T.fontBrush, fontSize: 38, color: 'var(--ink)',
-          marginBottom: 10, letterSpacing: '.04em',
+          fontFamily: T.fontSerif, fontSize: 38, color: 'var(--ink)',
+          fontWeight: 700, marginBottom: 10, letterSpacing: '.04em',
         }}>
           一本会思考的本子
         </div>
@@ -65,7 +65,7 @@ export function OnboardingScreen({ onStart, persona }) {
           padding: '16px 0',
           background: persona.color, color: '#fff',
           border: 'none', borderRadius: 14, cursor: 'pointer',
-          fontFamily: T.fontBrush, fontSize: 18, letterSpacing: '.1em',
+          fontFamily: T.fontSerif, fontSize: 18, fontWeight: 700, letterSpacing: '.1em',
           boxShadow: '0 8px 24px rgba(184,68,58,.32)',
           marginTop: 24, marginBottom: 12,
         }}>

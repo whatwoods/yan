@@ -43,7 +43,7 @@ export function YanScreen({ notes, persona }) {
             border: 'none', display: 'flex', alignItems: 'center', gap: 8,
             cursor: 'pointer',
             boxShadow: '0 8px 24px rgba(184,68,58,.38)',
-            fontFamily: T.fontBrush, fontSize: 15, letterSpacing: '.04em',
+            fontFamily: T.fontSerif, fontSize: 15, fontWeight: 700, letterSpacing: '.04em',
           }}>
           <I.chat size={18} />
           <span>问{persona.name}</span>
@@ -63,7 +63,7 @@ export function YanScreen({ notes, persona }) {
             }}>
               <SealStamp size={28} text={persona.mark} color={persona.color} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontFamily: T.fontBrush, fontSize: 16, color: 'var(--ink)', lineHeight: 1.1 }}>
+                <div style={{ fontFamily: T.fontSerif, fontSize: 16, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
                   问{persona.name}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--ink-mute)' }}>
@@ -190,7 +190,7 @@ function YanInsightBody({ notes, persona }) {
           }}>{persona.name} · 本月小结</div>
         </div>
         <div style={{
-          fontFamily: T.fontBrush, fontSize: 17, color: 'var(--ink)',
+          fontFamily: T.fontSerif, fontSize: 17, fontWeight: 700, color: 'var(--ink)',
           lineHeight: 1.7, marginBottom: 8,
         }}>
           你这个月写下 <span style={{ color: persona.color }}>{stats.monthCount}</span> 条。

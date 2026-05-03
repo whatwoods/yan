@@ -57,11 +57,11 @@ export function App() {
   useEffect(() => {
     const T = TOKENS;
     const fontMap = {
-      serif: T.fontSerif,
+      wenkai: T.fontSerif,
+      serif: '"Noto Serif SC", "Songti SC", serif',
       sans: T.fontSans,
-      kai: '"Kaiti SC", "STKaiti", "Noto Serif SC", serif',
     };
-    document.body.style.fontFamily = fontMap[settings.font] || T.fontSans;
+    document.body.style.fontFamily = fontMap[settings.font] || T.fontSerif;
     document.documentElement.style.setProperty('--font-body', fontMap[settings.font] || T.fontSerif);
   }, [settings.font]);
 

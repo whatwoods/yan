@@ -5,10 +5,10 @@ export const TOKENS = {
   ink: '#1f1a14', inkSoft: '#3a322a', inkMute: '#7a6f5f', inkFade: '#a89e8c',
   seal: '#b8443a', bamboo: '#5b7a5a', ochre: '#c89342', indigo: '#3d5a7c', plum: '#8b4a5e',
   sealTint: '#f3dcd3', bambooTint: '#dde6d8', ochreTint: '#f1e2c4', indigoTint: '#d4dce8', plumTint: '#ead7dd',
-  fontSerif: '"Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", Georgia, serif',
-  fontSans:  '"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, system-ui, sans-serif',
-  fontBrush: '"ZCOOL XiaoWei", "Noto Serif SC", serif',
-  fontMono:  '"JetBrains Mono", "SF Mono", Menlo, monospace',
+  fontSerif: '"LXGW WenKai", "Noto Serif SC", "Songti SC", serif',
+  fontSans:  '"LXGW WenKai", "Noto Sans SC", "PingFang SC", sans-serif',
+  fontBrush: '"Noto Serif SC", "Songti SC", serif',
+  fontMono:  '"Source Code Pro", "SF Mono", Menlo, monospace',
 };
 
 export const PERSONAS = {

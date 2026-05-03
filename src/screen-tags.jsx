@@ -70,7 +70,7 @@ export function TagsScreen({ notes, onBack, onPickTag, persona }) {
                   }} />
                   <div style={{ position: 'relative' }}>
                     <div style={{
-                      fontFamily: T.fontBrush, fontSize: 22,
+                      fontFamily: T.fontSerif, fontSize: 22, fontWeight: 700,
                       color: `var(--${c.color})`, marginBottom: 4,
                     }}>{c.label}</div>
                     <div className="mono" style={{

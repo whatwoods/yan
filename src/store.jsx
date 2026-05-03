@@ -389,7 +389,7 @@ export const Store = {
     if (Store._settings) return Store._settings;
     try {
       return JSON.parse(localStorage.getItem('biji.settings.v1') || 'null') || {
-        persona: 'yan', theme: 'paper', font: 'serif', autoTag: true, density: 'comfy',
+        persona: 'yan', theme: 'paper', font: 'wenkai', autoTag: true, density: 'comfy',
       };
     } catch {
       return { persona: 'yan', theme: 'paper', font: 'serif', autoTag: true, density: 'comfy' };

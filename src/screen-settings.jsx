@@ -548,7 +548,7 @@ function PersonaSheet({ current, onPick, onClose }) {
               }}>
                 <SealStamp size={42} text={p.mark} color={p.color} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: T.fontBrush, fontSize: 18, color: 'var(--ink)' }}>
+                  <div style={{ fontFamily: T.fontSerif, fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>
                     {p.name}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
@@ -572,9 +572,9 @@ function PersonaSheet({ current, onPick, onClose }) {
 function FontSheet({ current, onPick, onClose }) {
   const T = TOKENS;
   const fonts = [
-    ['serif', '思源宋体', T.fontSerif, '经典 · 端庄'],
-    ['sans',  '思源黑体', T.fontSans,  '现代 · 清晰'],
-    ['kai',   '楷体',     '"Kaiti SC", "STKaiti", serif', '手写 · 温柔'],
+    ['wenkai', '霞鹜文楷', T.fontSerif, '文艺 · 温润'],
+    ['serif',  '思源宋体', '"Noto Serif SC", "Songti SC", serif', '经典 · 端庄'],
+    ['sans',   '思源黑体', T.fontSans,  '现代 · 清晰'],
   ];
   return (
     <>
