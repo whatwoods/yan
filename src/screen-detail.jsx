@@ -1,6 +1,7 @@
 // screen-detail.jsx — Single note detail with AI summary & tags.
 
 import React, { useState, useEffect } from 'react';
+import { marked } from 'marked';
 import { TOKENS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, showToast } from './components.jsx';
@@ -168,13 +169,14 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
             </div>
           </div>
         ) : (
-          <div onClick={() => setEditing(true)} style={{
-            fontFamily: T.fontSerif, fontSize: 16, lineHeight: 1.9, color: 'var(--ink-soft)',
-            paddingBottom: 16, borderBottom: `1px dashed var(--fold)`,
-            cursor: 'text', whiteSpace: 'pre-wrap',
-          }}>
-            {note.body || <span style={{ color: 'var(--ink-fade)' }}>（无字 · 点此编辑）</span>}
-          </div>
+          <div onClick={() => setEditing(true)} className="md-body"
+            dangerouslySetInnerHTML={{ __html: note.body ? marked.parse(note.body) : '<span style="color:var(--ink-fade)">（无字 · 点此编辑）</span>' }}
+            style={{
+              fontFamily: T.fontSerif, fontSize: 16, lineHeight: 1.9, color: 'var(--ink-soft)',
+              paddingBottom: 16, borderBottom: `1px dashed var(--fold)`,
+              cursor: 'text',
+            }}
+          />
         )}
 
         {/* AI tags section */}
