@@ -12,6 +12,7 @@ import { SettingsScreen } from './screen-settings.jsx';
 import { OnboardingScreen } from './screen-onboard.jsx';
 import { SearchScreen } from './screen-search.jsx';
 import { TagsScreen } from './screen-tags.jsx';
+import { TrashScreen } from './screen-trash.jsx';
 
 export function App() {
   const [notes, setNotes] = useState([]);
@@ -102,9 +103,9 @@ export function App() {
   }, []);
 
   const deleteNote = useCallback(async (id) => {
-    await Store.deleteNote(id);
+    await Store.softDelete(id);
     setNotes(Store.getNotes());
-    showToast('已删');
+    showToast('已移入回收站');
   }, []);
 
   // ── Routing helpers ──────────────────────────────────────
@@ -116,8 +117,8 @@ export function App() {
   // Browser back button support (a tiny popstate dance)
   useEffect(() => {
     const onPop = () => {
-      if (route === 'detail' || route === 'search' || route === 'tags') {
-        setRoute(route === 'detail' ? 'list' : 'list');
+      if (route === 'detail' || route === 'search' || route === 'tags' || route === 'trash') {
+        setRoute(route === 'detail' ? 'list' : route === 'trash' ? 'settings' : 'list');
       }
     };
     window.addEventListener('popstate', onPop);
@@ -241,6 +242,7 @@ export function App() {
             onResetSeed={onResetSeed}
             onClearAll={onClearAll}
             onExport={onExport}
+            onNavigate={setRoute}
           />
         )}
         {route === 'search' && (
@@ -260,6 +262,12 @@ export function App() {
               setFilterTag(label);
               setRoute('list');
             }}
+          />
+        )}
+        {route === 'trash' && (
+          <TrashScreen
+            onBack={() => setRoute('settings')}
+            onRefresh={() => setNotes(Store.getNotes())}
           />
         )}
 

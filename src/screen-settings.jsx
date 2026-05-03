@@ -1,15 +1,20 @@
 // screen-settings.jsx — Settings page with persona, theme, data sections.
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TOKENS, PERSONAS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, ScrHead } from './components.jsx';
+import { Store } from './store.jsx';
 
-export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes }) {
+export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate }) {
   const T = TOKENS, I = ICONS;
 
   const [showPersona, setShowPersona] = useState(false);
   const [showFont, setShowFont] = useState(false);
+
+  const deletedCount = useMemo(() =>
+    Store.getAllNotesWithDeleted().filter((n) => n.deleted_at).length, []
+  );
 
   return (
     <div className="screen paper">
@@ -62,6 +67,9 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         </Section>
 
         <Section title="数据">
+          <Row icon={<I.trash size={14} />} label="回收站"
+            value={deletedCount > 0 ? `${deletedCount} 篇` : '空'}
+            onClick={() => onNavigate?.('trash')} />
           <Row icon={<I.clip size={14} />} label="导出全部笔记"
             value="Markdown" onClick={onExport} />
           <Row icon={<I.bolt size={14} />} label="重置示例数据"

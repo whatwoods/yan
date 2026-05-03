@@ -236,7 +236,18 @@ export const Store = {
       Store._notes = all.map((n) => ensureCompat(n));
     }
 
-    // 3. Initialize default categories if not present
+    // 3. Auto-cleanup: permanently delete notes soft-deleted > 30 days ago
+    const THIRTY_DAYS = 30 * 86_400_000;
+    const cutoff = Date.now() - THIRTY_DAYS;
+    const stale = Store._notes.filter(
+      (n) => n.deleted_at && new Date(n.deleted_at).getTime() < cutoff
+    );
+    for (const n of stale) {
+      await dbDeleteNote(n.id);
+      Store._notes = Store._notes.filter((x) => x.id !== n.id);
+    }
+
+    // 4. Initialize default categories if not present
     const cats = await getMeta('categories');
     if (!cats) {
       await setMeta('categories', DEFAULT_CATEGORIES);
@@ -280,6 +291,13 @@ export const Store = {
    * Return ALL notes (including soft-deleted) from cache.
    */
   getAllCachedNotes() {
+    return Store._notes;
+  },
+
+  /**
+   * Return all notes including soft-deleted ones (alias for trash screen).
+   */
+  getAllNotesWithDeleted() {
     return Store._notes;
   },
 
