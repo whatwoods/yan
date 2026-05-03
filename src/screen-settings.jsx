@@ -58,7 +58,8 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         if (savedAssignment) setModelAssignment(savedAssignment);
         if (savedWebdav) {
           setWebdavConfig(savedWebdav);
-          if (savedWebdav.server && savedWebdav.username) {
+          // Skip initWebDAV when password is encrypted but not yet unlocked
+          if (savedWebdav.server && savedWebdav.username && !(hasPw && !SecretsStore.isUnlocked())) {
             initWebDAV(savedWebdav);
           }
         }
@@ -108,8 +109,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       if (models.length > 0) {
         setAiModels(models);
         const updated = { ...aiConfig, models, defaultModel: aiConfig.defaultModel || models[0] };
-        setAiConfig(updated);
-        await setMeta('aiConfig', updated);
+        await saveAiConfig(updated);
         showToast(`连接成功 · ${models.length} 个模型`);
       } else {
         showToast('连接失败: 未获取到模型列表');
@@ -119,7 +119,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     } finally {
       setAiTesting(false);
     }
-  }, [aiConfig]);
+  }, [aiConfig, saveAiConfig]);
 
   // ── WebDAV config handlers ──────────────────────────────────
   const saveWebdavConfig = useCallback(async (config) => {
