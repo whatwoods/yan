@@ -8,7 +8,7 @@ import { Store, DEFAULT_CATEGORIES } from './store.jsx';
 import { initWebDAV, testConnection, syncAll } from './sync.js';
 import { SecretsStore } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
-import { PROVIDERS, fetchModels as aiFetchModels } from './ai.js';
+import { PROVIDERS, TASK_LABELS, fetchModels as aiFetchModels, getModelAssignment } from './ai.js';
 
 export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate, installPrompt }) {
   const T = TOKENS, I = ICONS;
@@ -20,6 +20,9 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   const [aiConfig, setAiConfig] = useState({ provider: 'deepseek', endpoint: '', apiKey: '', models: [], defaultModel: '' });
   const [aiTesting, setAiTesting] = useState(false);
   const [aiModels, setAiModels] = useState([]);
+  const [modelAssignment, setModelAssignment] = useState({ classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '' });
+  const [showProviderPicker, setShowProviderPicker] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(null); // task key or null
 
   // WebDAV config state
   const [webdavConfig, setWebdavConfig] = useState({ server: '', username: '', password: '' });
@@ -41,14 +44,16 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   useEffect(() => {
     (async () => {
       try {
-        const [savedAi, savedWebdav, savedCats, savedLastSync, hasPw] = await Promise.all([
+        const [savedAi, savedWebdav, savedCats, savedLastSync, hasPw, savedAssignment] = await Promise.all([
           getMeta('aiConfig'),
           getMeta('webdavConfig'),
           getMeta('categories'),
           getMeta('lastSync'),
           SecretsStore.isSetup(),
+          getModelAssignment(),
         ]);
         if (savedAi) setAiConfig(savedAi);
+        if (savedAssignment) setModelAssignment(savedAssignment);
         if (savedWebdav) {
           setWebdavConfig(savedWebdav);
           if (savedWebdav.server && savedWebdav.username) {
@@ -308,11 +313,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
             <>
               <Row icon={<I.globe size={14} />} label="供应商"
                 value={PROVIDERS.find(p => p.id === aiConfig.provider)?.name || '未设置'}
-                onClick={() => {
-                  const idx = PROVIDERS.findIndex(p => p.id === aiConfig.provider);
-                  const next = PROVIDERS[(idx + 1) % PROVIDERS.length];
-                  saveAiConfig({ ...aiConfig, provider: next.id, endpoint: next.endpoint });
-                }} />
+                onClick={() => setShowProviderPicker(true)} />
               <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
                 <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>端点</div>
                 <input
@@ -344,22 +345,36 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
               {aiModels.length > 0 && (
                 <div style={{ padding: '8px 14px' }}>
                   <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 6, fontFamily: T.fontSerif }}>
-                    可用模型 ({aiModels.length})
+                    默认模型
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {aiModels.map((m, i) => (
-                      <span key={i} style={{
-                        padding: '3px 8px', borderRadius: 6,
-                        background: 'var(--paper-deep)', fontSize: 11,
-                        fontFamily: T.fontMono, color: 'var(--ink-soft)',
-                      }}>{m}</span>
-                    ))}
-                  </div>
+                  <select
+                    value={aiConfig.defaultModel}
+                    onChange={(e) => saveAiConfig({ ...aiConfig, defaultModel: e.target.value })}
+                    style={{ ...inputStyle(T), width: '100%' }}
+                  >
+                    {aiModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
                 </div>
               )}
             </>
           )}
         </Section>
+
+        {/* Per-task model assignment */}
+        {aiModels.length > 0 && !masterPasswordSet || secretsUnlocked ? (
+          <Section title="任务模型分配">
+            {Object.entries(TASK_LABELS).map(([key, label], idx, arr) => (
+              <Row
+                key={key}
+                icon={<span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{label[0]}</span>}
+                label={label}
+                value={modelAssignment[key] || aiConfig.defaultModel || '默认'}
+                onClick={() => setShowModelPicker(key)}
+                last={idx === arr.length - 1}
+              />
+            ))}
+          </Section>
+        ) : null}
 
         {/* WebDAV Sync */}
         <Section title="WebDAV 同步">
@@ -542,6 +557,36 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           onSave={handleSaveCategory}
           onDelete={editingCat !== null && editingCat >= 0 ? () => { handleDeleteCategory(editingCat); setShowCatSheet(false); setEditingCat(null); } : null}
           onClose={() => { setShowCatSheet(false); setEditingCat(null); }}
+        />
+      )}
+      {showProviderPicker && (
+        <PickerSheet
+          title="选择供应商"
+          options={PROVIDERS.map(p => ({ value: p.id, label: p.name, hint: p.endpoint || '手动填写端点' }))}
+          current={aiConfig.provider}
+          onSelect={(id) => {
+            const p = PROVIDERS.find(x => x.id === id);
+            saveAiConfig({ ...aiConfig, provider: id, endpoint: p?.endpoint || aiConfig.endpoint });
+            setShowProviderPicker(false);
+          }}
+          onClose={() => setShowProviderPicker(false)}
+        />
+      )}
+      {showModelPicker && (
+        <PickerSheet
+          title={`模型 · ${TASK_LABELS[showModelPicker] || showModelPicker}`}
+          options={[
+            { value: '', label: '使用默认模型', hint: aiConfig.defaultModel || '未设置' },
+            ...aiModels.map(m => ({ value: m, label: m, hint: '' })),
+          ]}
+          current={modelAssignment[showModelPicker] || ''}
+          onSelect={(val) => {
+            const updated = { ...modelAssignment, [showModelPicker]: val };
+            setModelAssignment(updated);
+            setMeta('modelAssignment', updated);
+            setShowModelPicker(null);
+          }}
+          onClose={() => setShowModelPicker(null)}
         />
       )}
     </div>
@@ -757,6 +802,52 @@ function MasterPasswordSheet({ isChange, onSubmit, onClose }) {
             <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
               {submitting ? '...' : '确定'}
             </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Generic picker sheet ───────────────────────────────────────
+
+function PickerSheet({ title, options, current, onSelect, onClose }) {
+  const T = TOKENS;
+  return (
+    <>
+      <div className="sheet-mask" onClick={onClose} />
+      <div className="sheet" style={{ height: 'auto', maxHeight: '70%' }}>
+        <div className="sheet-grip" />
+        <div className="scroll" style={{ padding: '0 24px 24px' }}>
+          <div style={{
+            fontSize: 12, color: 'var(--ink-mute)',
+            letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
+            fontFamily: T.fontSerif,
+          }}>{title}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {options.map((opt) => (
+              <button key={opt.value} onClick={() => onSelect(opt.value)} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 14px', borderRadius: 12,
+                background: current === opt.value ? 'var(--paper-deep)' : 'var(--paper-light)',
+                border: `1.5px solid ${current === opt.value ? 'var(--seal)' : 'var(--fold)'}`,
+                cursor: 'pointer', textAlign: 'left',
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.fontSerif, fontSize: 14, color: 'var(--ink)' }}>
+                    {opt.label}
+                  </div>
+                  {opt.hint && (
+                    <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 1, fontFamily: T.fontMono }}>
+                      {opt.hint}
+                    </div>
+                  )}
+                </div>
+                {current === opt.value && (
+                  <span style={{ color: 'var(--seal)', fontSize: 14, fontWeight: 600 }}>选</span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       </div>

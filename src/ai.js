@@ -14,7 +14,12 @@ export const PROVIDERS = [
   { id: 'xiaomi', name: '小米', endpoint: 'https://token-plan-cn.xiaomimimo.com/v1' },
   { id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1' },
   { id: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1' },
+  { id: 'custom', name: '自定义', endpoint: '' },
 ];
+
+export const TASK_LABELS = {
+  classify: '分类', tag: '打标签', summarize: '摘要', insight: '月度洞察', ask: '问砚', curator: '标签整理',
+};
 
 export async function getAIConfig() {
   const config = (await getMeta('aiConfig')) || { provider: null, apiKey: null, endpoint: null, models: [], defaultModel: '' };
