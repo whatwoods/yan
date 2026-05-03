@@ -32,6 +32,11 @@ export function getNotePath(id) {
   return `/biji/notes/${year}/${month}/${safe}.md`;
 }
 
+export function getTrashPath(noteId) {
+  const safe = sanitizeId(noteId);
+  return `/biji/trash/${safe}.md`;
+}
+
 export function getAttachmentPath(noteId, filename) {
   return `/biji/attachments/${sanitizeId(noteId)}/${sanitizeId(filename)}`;
 }
@@ -55,7 +60,13 @@ export function serialize(note) {
     people: note.people || [],
     pinned: note.pinned || false,
     attachments: note.attachments || [],
+    photo: note.photo || null,
   };
+
+  // Only include deleted_at if note is soft-deleted
+  if (note.deleted_at) {
+    fm.deleted_at = note.deleted_at;
+  }
 
   // Only include ai block if it has content
   if (note.ai?.summary) {
@@ -97,6 +108,7 @@ export function deserialize(md, filePath) {
     summary: data.ai?.summary || data.summary || '',
     ai: data.ai || null,
     attachments: data.attachments || [],
+    photo: data.photo || null,
     deleted_at: data.deleted_at || null,
   };
 }

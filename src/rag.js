@@ -59,8 +59,8 @@ export async function answerQuestion(question, candidates) {
 
   return {
     text: answer || '翻完了笔记，但没能找到与此特别相关的。',
-    refs: candidates.slice(0, 6).map(n => ({
-      id: n.id, title: n.title, when: (n.created || '').slice(0, 10),
+    refs: candidates.slice(0, 6).map((n, i) => ({
+      id: n.id, title: n.title, when: (n.created || '').slice(0, 10), index: i + 1,
     })),
   };
 }

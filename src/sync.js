@@ -2,7 +2,7 @@
 // Push/pull notes as Markdown with YAML frontmatter.
 // Spec §6.2: /biji/notes/, /biji/categories.json, /biji/insights/, /biji/preferences.md, /biji/trash/
 
-import { serialize, deserialize, getNotePath } from './note-format.js';
+import { serialize, deserialize, getNotePath, getTrashPath } from './note-format.js';
 import { putNote, getMeta, setMeta, getSyncQueue, clearSyncQueue } from './db.js';
 
 // ── Lightweight WebDAV client (fetch-based, no Node polyfills) ──
@@ -143,7 +143,7 @@ export async function testConnection(config) {
 export async function pushNote(note) {
   if (!client) return;
   const md = serialize(note);
-  const path = getNotePath(note.id);
+  const path = note.deleted_at ? getTrashPath(note.id) : getNotePath(note.id);
   // Ensure parent directory exists
   const dir = path.substring(0, path.lastIndexOf('/'));
   try { await client.createDirectory(dir, { recursive: true }); } catch {}
@@ -178,6 +178,28 @@ export async function pullNotes(months = 6) {
       }
     } catch {} // dir doesn't exist, skip
   }
+  return pulled;
+}
+
+/**
+ * Pull soft-deleted notes from WebDAV trash directory.
+ * @returns {Promise<object[]>} array of deserialized notes from /biji/trash/
+ */
+export async function pullTrashNotes() {
+  if (!client) return [];
+  const pulled = [];
+  try {
+    const contents = await client.getDirectoryContents('/biji/trash');
+    for (const file of (Array.isArray(contents) ? contents : [])) {
+      if (file.filename.endsWith('.md')) {
+        try {
+          const md = await client.getFileContents(file.filename, { format: 'text' });
+          const note = deserialize(md, file.filename);
+          pulled.push(note);
+        } catch (e) { console.warn('[sync] 读取回收站笔记失败:', e.message); }
+      }
+    }
+  } catch {} // dir doesn't exist, skip
   return pulled;
 }
 
@@ -290,7 +312,9 @@ export async function syncAll(localNotes, extra = {}) {
   try {
     // ── Notes sync ───────────────────────────────────────────
     const remoteNotes = await pullNotes();
-    const remoteMap = new Map(remoteNotes.map(n => [n.id, n]));
+    const trashNotes = await pullTrashNotes();
+    const allRemote = [...remoteNotes, ...trashNotes];
+    const remoteMap = new Map(allRemote.map(n => [n.id, n]));
     const conflicts = [];
     const upserted = [];
 
@@ -369,7 +393,7 @@ export async function syncAll(localNotes, extra = {}) {
     await setMeta('syncFailCount', 0);
     await setMeta('syncStatus', 'synced');
 
-    return { synced: remoteNotes.length, conflicts, upserted };
+    return { synced: allRemote.length, conflicts, upserted };
   } catch (err) {
     const newCount = failCount + 1;
     await setMeta('syncFailCount', newCount);

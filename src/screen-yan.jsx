@@ -5,7 +5,7 @@ import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
-import { generateInsight, getAIConfig } from './ai.js';
+import { generateInsight, getAIConfig, getModelAssignment } from './ai.js';
 import { getMeta, setMeta } from './db.js';
 import { Store } from './store.jsx';
 import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCuratorSuggestion, rejectCuratorSuggestion } from './curator.js';
@@ -122,7 +122,8 @@ function YanInsightBody({ notes, persona, categories }) {
         getAIConfig(),
       ]);
       if (saved) setAiInsight(saved);
-      setAiReady(!!(config.apiKey && config.endpoint));
+      const assignment = await getModelAssignment();
+      setAiReady(!!(config.apiKey && config.endpoint && (config.defaultModel || assignment?.ask)));
     })();
   }, [insightKey]);
 
@@ -456,12 +457,17 @@ function YanChatBody({ notes, persona, categories, existingTags }) {
         }
         setMessages((m) => [...m, { role: 'assistant', text: result.text, refs: result.refs }]);
       } catch {
-        // Show red error per spec §8.4, then offer rule-based fallback
-        setMessages((m) => [...m, {
-          role: 'assistant',
-          text: 'AI 连接失败，请检查网络和 API 配置。',
-          error: true,
-        }]);
+        // Fall back to rule-based askYan when AI fails
+        try {
+          const fallback = askYan(q, notes);
+          setMessages((m) => [...m, { role: 'assistant', text: fallback.text + '（离线回答）', refs: fallback.refs }]);
+        } catch {
+          setMessages((m) => [...m, {
+            role: 'assistant',
+            text: 'AI 连接失败，请检查网络和 API 配置。',
+            error: true,
+          }]);
+        }
       } finally {
         setThinking(false);
       }
@@ -499,6 +505,9 @@ function YanChatBody({ notes, persona, categories, existingTags }) {
                     fontSize: 12, color: 'var(--ink-mute)',
                     fontFamily: T.fontSerif,
                   }}>
+                    <span className="mono" style={{ fontSize: 10, color: persona.color, width: 16 }}>
+                      {r.index}
+                    </span>
                     <span className="mono" style={{ fontSize: 10, color: 'var(--ink-fade)', width: 40 }}>
                       {r.when}
                     </span>
