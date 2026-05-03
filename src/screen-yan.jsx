@@ -1,10 +1,12 @@
 // screen-yan.jsx — 砚: insights main + chat overlay (FAB).
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
+import { generateInsight, getAIConfig } from './ai.js';
+import { getMeta, setMeta } from './db.js';
 
 export function YanScreen({ notes, persona }) {
   const T = TOKENS, I = ICONS;
@@ -83,6 +85,48 @@ function YanInsightBody({ notes, persona }) {
 
   const stats = useMemo(() => computeStats(notes), [notes]);
 
+  // Monthly AI insight state
+  const now = new Date();
+  const insightKey = `insight:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthLabel = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+  const monthNotes = useMemo(() => {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return notes.filter(n => n.createdAt >= monthStart);
+  }, [notes]);
+
+  const [aiInsight, setAiInsight] = useState(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [aiReady, setAiReady] = useState(false);
+
+  // Load persisted insight and check AI config on mount
+  useEffect(() => {
+    (async () => {
+      const [saved, config] = await Promise.all([
+        getMeta(insightKey),
+        getAIConfig(),
+      ]);
+      if (saved) setAiInsight(saved);
+      setAiReady(!!(config.apiKey && config.endpoint));
+    })();
+  }, [insightKey]);
+
+  const handleGenerateInsight = useCallback(async () => {
+    if (monthNotes.length === 0) return;
+    setInsightLoading(true);
+    try {
+      const text = await generateInsight(monthNotes, monthLabel);
+      if (text) {
+        const insight = { text, generated_at: new Date().toISOString(), noteCount: monthNotes.length };
+        await setMeta(insightKey, insight);
+        setAiInsight(insight);
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [monthNotes, monthLabel, insightKey]);
+
   return (
     <div className="scroll" style={{ flex: 1, padding: '14px 16px 100px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -118,6 +162,59 @@ function YanInsightBody({ notes, persona }) {
           「{stats.peakHour}」是你思考最活跃的时段。
         </div>
       </div>
+
+      {/* AI Insight card */}
+      {aiReady && (
+        <div className="card" style={{ borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 14 }}>{persona.mark}</span>
+              <span style={{
+                fontSize: 11, color: persona.color, fontWeight: 600,
+                letterSpacing: '.08em',
+              }}>AI 洞察</span>
+            </div>
+            <button
+              onClick={handleGenerateInsight}
+              disabled={insightLoading}
+              style={{
+                border: 'none', background: 'var(--paper-deep)',
+                borderRadius: 6, padding: '3px 10px',
+                fontSize: 11, color: aiInsight ? 'var(--ink-mute)' : persona.color,
+                cursor: insightLoading ? 'default' : 'pointer',
+                fontFamily: T.fontSerif,
+              }}
+            >
+              {insightLoading ? '思考中...' : aiInsight ? '重新生成' : '生成洞察'}
+            </button>
+          </div>
+          {aiInsight ? (
+            <div style={{
+              fontFamily: T.fontSerif, fontSize: 14,
+              color: 'var(--ink-soft)', lineHeight: 1.7,
+            }}>
+              {aiInsight.text}
+            </div>
+          ) : !insightLoading ? (
+            <div style={{
+              fontSize: 12, color: 'var(--ink-fade)',
+              fontFamily: T.fontSerif, lineHeight: 1.6,
+            }}>
+              {monthNotes.length > 0
+                ? `本月有 ${monthNotes.length} 条笔记，点击上方按钮让 ${persona.name} 为你总结。`
+                : '本月还没有笔记。'}
+            </div>
+          ) : null}
+          {aiInsight?.generated_at && (
+            <div style={{
+              fontSize: 10, color: 'var(--ink-fade)',
+              marginTop: 8, fontFamily: T.fontMono,
+            }}>
+              {new Date(aiInsight.generated_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
