@@ -17,7 +17,8 @@ import { TrashScreen } from './screen-trash.jsx';
 export function App() {
   const [notes, setNotes] = useState([]);
   const [settings, setSettings] = useState(() => Store.loadSettings());
-  const [route, setRoute] = useState(() => Store.isFirstRun() ? 'onboard' : 'capture');
+  const [route, setRoute] = useState('capture');
+  const [showSetupHint, setShowSetupHint] = useState(() => Store.isFirstRun());
   const [openNoteId, setOpenNoteId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -200,19 +201,10 @@ export function App() {
     );
   }
 
-  // First-run takeover
-  if (route === 'onboard') {
-    return (
-      <ToastHost>
-        <div className="app">
-          <OnboardingScreen persona={persona} onStart={() => {
-            Store.markRun();
-            setRoute('capture');
-          }} />
-        </div>
-      </ToastHost>
-    );
-  }
+  // First-run: mark as run immediately (no takeover)
+  useEffect(() => {
+    if (showSetupHint) Store.markRun();
+  }, [showSetupHint]);
 
   // Tag filter is just a hint passed to ListScreen as initialFilter
   const listInitialFilter = filterTag;
@@ -226,6 +218,9 @@ export function App() {
             onSave={saveNewNote}
             onOpenNote={openNote}
             persona={persona}
+            showSetupHint={showSetupHint}
+            onDismissSetup={() => setShowSetupHint(false)}
+            onGoSettings={() => { setShowSetupHint(false); setRoute('settings'); }}
           />
         )}
         {route === 'list' && (

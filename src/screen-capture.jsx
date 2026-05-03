@@ -29,7 +29,7 @@ async function compressPhoto(file) {
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
 
-export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
+export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHint, onDismissSetup, onGoSettings }) {
   const T = TOKENS, I = ICONS;
 
   const [mode, setMode] = useState('idle');
@@ -254,6 +254,30 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
         </div>
         <SealStamp size={36} text={persona.mark} color={persona.color} />
       </div>
+
+      {/* Setup hint — first-run banner */}
+      {showSetupHint && (
+        <div style={{
+          margin: '0 20px 8px', padding: '10px 14px',
+          background: 'rgba(184,68,58,.06)', border: '1px solid rgba(184,68,58,.15)',
+          borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10,
+          fontSize: 13, fontFamily: T.fontSerif, color: 'var(--ink-soft)',
+        }}>
+          <span style={{ flex: 1 }}>
+            随时可写。想让 {persona.name} 更聪明？去
+            <button onClick={onGoSettings} style={{
+              background: 'none', border: 'none', color: persona.color,
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit',
+              textDecoration: 'underline', textUnderlineOffset: 2, padding: 0, margin: '0 2px',
+            }}>设置</button>
+            配一下 AI。
+          </span>
+          <button onClick={onDismissSetup} style={{
+            background: 'none', border: 'none', color: 'var(--ink-fade)',
+            cursor: 'pointer', fontSize: 16, padding: '0 4px',
+          }}>×</button>
+        </div>
+      )}
 
       {/* Recent capsules */}
       <div className="scroll" style={{ flex: 1, padding: '4px 20px 0' }}>
