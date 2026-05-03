@@ -1,5 +1,5 @@
 // store.jsx — IndexedDB-backed notes + settings.
-// Migrated from localStorage to IndexedDB (biji-v1) on first run.
+// Migrated from localStorage to IndexedDB (yan-v1) on first run.
 
 import {
   getAllNotes, putNote, deleteNote as dbDeleteNote,
@@ -18,7 +18,7 @@ export { TAG_TO_CATEGORY } from './tag-colors.js';
 import { buildSearchIndex, addNoteToIndex, updateNoteInIndex, removeNoteFromIndex } from './search.js';
 import { TAG_TO_CATEGORY } from './tag-colors.js';
 
-const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
+const STORAGE_FIRST_RUN = 'yan.firstRun.v1';
 
 // ── Default categories ───────────────────────────────────────
 
@@ -54,7 +54,7 @@ function seedNotes() {
       id: generateId(), kind: 'text',
       created: ts, modified: ts,
       title: '欢迎使用砚',
-      body: '砚是一本会自己整理的本子。记下即整理，不用管标签和分类。\n\n**怎么用：**\n\n1. 点底部「记」，随手写下任何想法\n2. 砚会自动分类、打标签、写摘要\n3. 在「本」页按分类和标签翻阅\n4. 点「砚」页的「问砚」，用自然语言搜笔记\n\n**进阶：**\n\n- 去「设置」配 AI 供应商，砚就能真正活过来\n- 配 WebDAV，笔记自动同步到你的网盘\n- 设主密码，让 API Key 在多设备间安全同步\n\n这条笔记可以删掉。去记你的第一笔吧。',
+      body: '砚是一本会思考的笔记本。记下即整理，不用管标签和分类。\n\n**怎么用：**\n\n1. 点底部「记」，随手写下任何想法\n2. 砚会自动分类、打标签、写摘要\n3. 在「本」页按分类和标签翻阅\n4. 点「砚」页的「问砚」，用自然语言搜笔记\n\n**进阶：**\n\n- 去「设置」配 AI 供应商，砚就能真正活过来\n- 配 WebDAV，笔记自动同步到你的网盘\n- 设主密码，让 API Key 在多设备间安全同步\n\n这条笔记可以删掉。去记你的第一笔吧。',
       category: '想法',
       tags: [{ label: '教程', color: 'ink' }],
       summary: '砚的使用指南',
@@ -148,7 +148,7 @@ export const Store = {
     if (!settings) {
       // Try reading from localStorage (pre-migration or first load)
       try {
-        settings = JSON.parse(localStorage.getItem('biji.settings.v1') || 'null');
+        settings = JSON.parse(localStorage.getItem('yan.settings.v1') || 'null');
       } catch (e) { console.warn('[store] 读取本地设置失败:', e); }
     }
     if (!settings) {
@@ -286,7 +286,7 @@ export const Store = {
     // Synchronous fallback for initial render before init() completes
     if (Store._settings) return Store._settings;
     try {
-      return JSON.parse(localStorage.getItem('biji.settings.v1') || 'null') || {
+      return JSON.parse(localStorage.getItem('yan.settings.v1') || 'null') || {
         persona: 'yan', theme: 'paper', font: 'wenkai', autoTag: true, density: 'comfy',
       };
     } catch {

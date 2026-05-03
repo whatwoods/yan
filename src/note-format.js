@@ -29,16 +29,16 @@ export function getNotePath(id) {
   const safe = sanitizeId(id);
   const year = safe.slice(0, 4);
   const month = safe.slice(5, 7);
-  return `/biji/notes/${year}/${month}/${safe}.md`;
+  return `/yan/notes/${year}/${month}/${safe}.md`;
 }
 
 export function getTrashPath(noteId) {
   const safe = sanitizeId(noteId);
-  return `/biji/trash/${safe}.md`;
+  return `/yan/trash/${safe}.md`;
 }
 
 export function getAttachmentPath(noteId, filename) {
-  return `/biji/attachments/${sanitizeId(noteId)}/${sanitizeId(filename)}`;
+  return `/yan/attachments/${sanitizeId(noteId)}/${sanitizeId(filename)}`;
 }
 
 // ── Serialize ────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
-  "name": "笔记 · 一本会思考的本子",
-  "short_name": "笔记",
+  "name": "砚 · 会思考的笔记本",
+  "short_name": "砚",
   "description": "文字、语音、照片，砚为你识其要意。",
   "start_url": "./",
   "scope": "./",
@@ -11,6 +11,12 @@
   "lang": "zh-CN",
   "categories": ["productivity", "utilities", "lifestyle"],
   "icons": [
+    {
+      "src": "icon-512.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    },
     {
       "src": "icon.svg",
       "sizes": "any",

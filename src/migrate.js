@@ -5,9 +5,9 @@ import { getDB, putNote, setMeta, getMeta } from './db.js';
 import { generateId } from './note-format.js';
 import { TAG_TO_CATEGORY } from './store.jsx';
 
-const STORAGE_NOTES = 'biji.notes.v1';
-const STORAGE_SETTINGS = 'biji.settings.v1';
-const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
+const STORAGE_NOTES = 'yan.notes.v1';
+const STORAGE_SETTINGS = 'yan.settings.v1';
+const STORAGE_FIRST_RUN = 'yan.firstRun.v1';
 
 function guessCategory(oldTags) {
   if (!oldTags || oldTags.length === 0) return '想法';

@@ -7,12 +7,12 @@ const PBKDF2_ITERATIONS = 600000;
 
 // Per-device salt: generated once, stored in localStorage
 function getSalt() {
-  let salt = localStorage.getItem('biji.cryptoSalt');
+  let salt = localStorage.getItem('yan.cryptoSalt');
   if (!salt) {
     // Generate a 32-char random salt
     const arr = crypto.getRandomValues(new Uint8Array(24));
     salt = btoa(String.fromCharCode(...arr));
-    localStorage.setItem('biji.cryptoSalt', salt);
+    localStorage.setItem('yan.cryptoSalt', salt);
   }
   return salt;
 }

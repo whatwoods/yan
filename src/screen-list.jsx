@@ -227,7 +227,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
           fontFamily: T.fontSerif, display: 'flex', alignItems: 'center', gap: 8,
         }}>
           <span style={{ fontWeight: 600 }}>{conflictCount} 条冲突</span>
-          <span style={{ color: 'var(--ink-mute)' }}>已保存到 /biji/conflicts/</span>
+          <span style={{ color: 'var(--ink-mute)' }}>已保存到 /yan/conflicts/</span>
           <button onClick={() => setConflictCount(0)} style={{
             marginLeft: 'auto', background: 'none', border: 'none',
             color: 'var(--ink-fade)', cursor: 'pointer', fontSize: 14,

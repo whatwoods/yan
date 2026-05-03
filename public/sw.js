@@ -1,5 +1,5 @@
 // 笔记 · service worker — Vite-aware offline caching.
-const CACHE = 'biji-v4';
+const CACHE = 'yan-v4';
 const PRECACHE = [
   './',
   'index.html',

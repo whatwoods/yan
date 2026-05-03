@@ -1,6 +1,6 @@
 // sync.js — WebDAV sync engine for notes, categories, insights, preferences.
 // Push/pull notes as Markdown with YAML frontmatter.
-// Spec §6.2: /biji/notes/, /biji/categories.json, /biji/insights/, /biji/preferences.md, /biji/trash/
+// Spec §6.2: /yan/notes/, /yan/categories.json, /yan/insights/, /yan/preferences.md, /yan/trash/
 
 import { serialize, deserialize, getNotePath, getTrashPath } from './note-format.js';
 import { putNote, getMeta, setMeta, getSyncQueue, clearSyncQueue } from './db.js';
@@ -164,7 +164,7 @@ export async function pullNotes(months = 6) {
     d.setMonth(d.getMonth() - i);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
-    const dirPath = `/biji/notes/${year}/${month}`;
+    const dirPath = `/yan/notes/${year}/${month}`;
     try {
       const contents = await client.getDirectoryContents(dirPath);
       for (const file of (Array.isArray(contents) ? contents : [])) {
@@ -183,13 +183,13 @@ export async function pullNotes(months = 6) {
 
 /**
  * Pull soft-deleted notes from WebDAV trash directory.
- * @returns {Promise<object[]>} array of deserialized notes from /biji/trash/
+ * @returns {Promise<object[]>} array of deserialized notes from /yan/trash/
  */
 export async function pullTrashNotes() {
   if (!client) return [];
   const pulled = [];
   try {
-    const contents = await client.getDirectoryContents('/biji/trash');
+    const contents = await client.getDirectoryContents('/yan/trash');
     for (const file of (Array.isArray(contents) ? contents : [])) {
       if (file.filename.endsWith('.md')) {
         try {
@@ -206,22 +206,22 @@ export async function pullTrashNotes() {
 // ── Non-note data sync (spec §6.2) ────────────────────────────
 
 /**
- * Push categories to /biji/categories.json
+ * Push categories to /yan/categories.json
  */
 export async function pushCategories(categories) {
   if (!client) return;
-  try { await client.createDirectory('/biji', { recursive: true }); } catch {}
-  await client.putFileContents('/biji/categories.json', JSON.stringify(categories, null, 2), { overwrite: true });
+  try { await client.createDirectory('/yan', { recursive: true }); } catch {}
+  await client.putFileContents('/yan/categories.json', JSON.stringify(categories, null, 2), { overwrite: true });
 }
 
 /**
- * Pull categories from /biji/categories.json
+ * Pull categories from /yan/categories.json
  * @returns {Promise<object[]|null>}
  */
 export async function pullCategories() {
   if (!client) return null;
   try {
-    const data = await client.getFileContents('/biji/categories.json', { format: 'text' });
+    const data = await client.getFileContents('/yan/categories.json', { format: 'text' });
     return JSON.parse(data);
   } catch (e) {
     console.warn('[sync] 读取分类失败:', e.message);
@@ -230,23 +230,23 @@ export async function pullCategories() {
 }
 
 /**
- * Push an insight to /biji/insights/<year>-<month>.md
+ * Push an insight to /yan/insights/<year>-<month>.md
  */
 export async function pushInsight(yearMonth, text) {
   if (!client) return;
-  try { await client.createDirectory('/biji/insights', { recursive: true }); } catch {}
-  await client.putFileContents(`/biji/insights/${yearMonth}.md`, text, { overwrite: true });
+  try { await client.createDirectory('/yan/insights', { recursive: true }); } catch {}
+  await client.putFileContents(`/yan/insights/${yearMonth}.md`, text, { overwrite: true });
 }
 
 /**
- * Pull all insights from /biji/insights/
+ * Pull all insights from /yan/insights/
  * @returns {Promise<Map<string, string>>} yearMonth → text
  */
 export async function pullInsights() {
   if (!client) return new Map();
   const result = new Map();
   try {
-    const contents = await client.getDirectoryContents('/biji/insights');
+    const contents = await client.getDirectoryContents('/yan/insights');
     for (const file of (Array.isArray(contents) ? contents : [])) {
       if (file.filename.endsWith('.md')) {
         try {
@@ -261,22 +261,22 @@ export async function pullInsights() {
 }
 
 /**
- * Push preferences to /biji/preferences.md
+ * Push preferences to /yan/preferences.md
  */
 export async function pushPreferences(prefs) {
   if (!client) return;
-  try { await client.createDirectory('/biji', { recursive: true }); } catch {}
-  await client.putFileContents('/biji/preferences.md', JSON.stringify(prefs, null, 2), { overwrite: true });
+  try { await client.createDirectory('/yan', { recursive: true }); } catch {}
+  await client.putFileContents('/yan/preferences.md', JSON.stringify(prefs, null, 2), { overwrite: true });
 }
 
 /**
- * Pull preferences from /biji/preferences.md
+ * Pull preferences from /yan/preferences.md
  * @returns {Promise<object|null>}
  */
 export async function pullPreferences() {
   if (!client) return null;
   try {
-    const data = await client.getFileContents('/biji/preferences.md', { format: 'text' });
+    const data = await client.getFileContents('/yan/preferences.md', { format: 'text' });
     return JSON.parse(data);
   } catch (e) {
     console.warn('[sync] 读取偏好失败:', e.message);
@@ -285,13 +285,13 @@ export async function pullPreferences() {
 }
 
 /**
- * Push a conflict copy to /biji/conflicts/<id>.md
+ * Push a conflict copy to /yan/conflicts/<id>.md
  */
 export async function pushConflict(note) {
   if (!client) return;
-  try { await client.createDirectory('/biji/conflicts', { recursive: true }); } catch {}
+  try { await client.createDirectory('/yan/conflicts', { recursive: true }); } catch {}
   const md = serialize(note);
-  await client.putFileContents(`/biji/conflicts/${note.id}.md`, md, { overwrite: true });
+  await client.putFileContents(`/yan/conflicts/${note.id}.md`, md, { overwrite: true });
 }
 
 // ── Main sync ─────────────────────────────────────────────────

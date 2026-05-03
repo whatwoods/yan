@@ -1,9 +1,9 @@
-// db.js — IndexedDB wrapper for biji-v1.
+// db.js — IndexedDB wrapper for yan-v1.
 // Uses the `idb` package for a clean async/await API over IndexedDB.
 
 import { openDB } from 'idb';
 
-const DB_NAME = 'biji-v1';
+const DB_NAME = 'yan-v1';
 const DB_VERSION = 1;
 
 let _dbPromise = null;
@@ -158,10 +158,10 @@ export async function clearSyncQueue() {
  * Used to generate unique note IDs when multiple devices share a DB.
  */
 export function getDeviceFingerprint() {
-  let fp = localStorage.getItem('biji.deviceFingerprint');
+  let fp = localStorage.getItem('yan.deviceFingerprint');
   if (!fp) {
     fp = Math.random().toString(36).slice(2, 5);
-    localStorage.setItem('biji.deviceFingerprint', fp);
+    localStorage.setItem('yan.deviceFingerprint', fp);
   }
   return fp;
 }

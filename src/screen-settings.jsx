@@ -195,7 +195,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       setWebdavStatus({ lastSync: syncNow, syncing: false, conflicts: result.conflicts.length });
       showToast(`同步完成: ${result.synced} 条`);
       if (result.conflicts.length > 0) {
-        showToast(`${result.conflicts.length} 条冲突已保存到 /biji/conflicts/`);
+        showToast(`${result.conflicts.length} 条冲突已保存到 /yan/conflicts/`);
       }
     } catch (e) {
       setWebdavStatus(prev => ({ ...prev, syncing: false }));
@@ -564,7 +564,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         <div style={{
           textAlign: 'center', padding: '20px 0 10px',
           fontFamily: T.fontMono, fontSize: 11, color: 'var(--ink-fade)',
-        }}>笔记 v1.0 · 一本会思考的本子</div>
+        }}>砚 v1.0 · 会思考的笔记本</div>
       </div>
 
       {/* Bottom sheets */}
