@@ -183,6 +183,11 @@ export function App() {
   // ── Derived state (must be before any early returns) ──────
   const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
 
+  // First-run: mark as run immediately (no takeover)
+  useEffect(() => {
+    if (showSetupHint) Store.markRun();
+  }, [showSetupHint]);
+
   // ── Loading screen ───────────────────────────────────────
   if (loading) {
     return (
@@ -199,11 +204,6 @@ export function App() {
       </ToastHost>
     );
   }
-
-  // First-run: mark as run immediately (no takeover)
-  useEffect(() => {
-    if (showSetupHint) Store.markRun();
-  }, [showSetupHint]);
 
   // Tag filter is just a hint passed to ListScreen as initialFilter
   const listInitialFilter = filterTag;

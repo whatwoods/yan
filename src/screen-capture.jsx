@@ -82,8 +82,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
         if (final) setText((t) => (t + final).trimStart());
         setInterim(interimT);
       };
-      r.onerror = () => {};
-      r.onend = () => {};
+      r.onerror = (e) => console.warn('语音识别错误:', e.error);
+      r.onend = () => {};  // onend is expected, leave empty
       try { r.start(); } catch {}
       recRef.current = r;
     } else {
