@@ -85,64 +85,82 @@ export async function pullNotes(months = 6) {
  * Full bidirectional sync: push local changes, pull remote changes,
  * detect conflicts. Returns sync summary.
  *
+ * After 3 consecutive failures, sets meta.syncStatus = 'error'.
+ * On success, sets meta.syncStatus = 'synced'.
+ *
  * @param {object[]} localNotes — all local notes (including soft-deleted)
- * @returns {Promise<{ synced: number, conflicts: Array<{ local: object, remote: object }> }>}
+ * @returns {Promise<{ synced: number, conflicts: Array<{ local: object, remote: object }>, error?: string }>}
  */
 export async function syncAll(localNotes) {
   if (!client) return { synced: 0, conflicts: [] };
-  const remoteNotes = await pullNotes();
-  const remoteMap = new Map(remoteNotes.map(n => [n.id, n]));
-  const conflicts = [];
 
-  for (const local of localNotes) {
-    const remote = remoteMap.get(local.id);
-    if (!remote) {
-      // Local-only → push
-      await pushNote(local);
-    } else {
-      const localMod = new Date(local.modified).getTime();
-      const remoteMod = new Date(remote.modified).getTime();
-      if (localMod > remoteMod) {
-        // Local is newer → push
+  // Load consecutive failure count
+  const failCount = (await getMeta('syncFailCount')) || 0;
+
+  try {
+    const remoteNotes = await pullNotes();
+    const remoteMap = new Map(remoteNotes.map(n => [n.id, n]));
+    const conflicts = [];
+
+    for (const local of localNotes) {
+      const remote = remoteMap.get(local.id);
+      if (!remote) {
         await pushNote(local);
-      } else if (remoteMod > localMod) {
-        // Remote is newer → check if local also changed since last sync
-        const lastSynced = await getMeta(`synced:${local.id}`);
-        if (lastSynced && localMod > new Date(lastSynced).getTime()) {
-          // Both modified since last sync → conflict
-          conflicts.push({ local, remote });
-        } else {
-          // Only remote changed → pull
-          await putNote(remote);
+      } else {
+        const localMod = new Date(local.modified).getTime();
+        const remoteMod = new Date(remote.modified).getTime();
+        if (localMod > remoteMod) {
+          await pushNote(local);
+        } else if (remoteMod > localMod) {
+          const lastSynced = await getMeta(`synced:${local.id}`);
+          if (lastSynced && localMod > new Date(lastSynced).getTime()) {
+            conflicts.push({ local, remote });
+          } else {
+            await putNote(remote);
+          }
         }
       }
-      // else equal → no action
+      remoteMap.delete(local.id);
     }
-    remoteMap.delete(local.id);
-  }
 
-  // Remote-only notes (not present locally)
-  for (const [, remote] of remoteMap) {
-    await putNote(remote);
-  }
+    for (const [, remote] of remoteMap) {
+      await putNote(remote);
+    }
 
-  // Drain the sync queue (pending push actions)
-  const queue = await getSyncQueue();
-  for (const item of queue) {
-    try {
-      if (item.action === 'push' && item.note_id) {
-        const note = localNotes.find(n => n.id === item.note_id);
-        if (note) await pushNote(note);
-      }
-    } catch {}
-  }
-  await clearSyncQueue();
+    // Drain the sync queue (pending push actions)
+    const queue = await getSyncQueue();
+    for (const item of queue) {
+      try {
+        if (item.action === 'push' && item.note_id) {
+          const note = localNotes.find(n => n.id === item.note_id);
+          if (note) await pushNote(note);
+        }
+      } catch {}
+    }
+    await clearSyncQueue();
 
-  // Record sync timestamps
-  await setMeta('lastSync', new Date().toISOString());
-  for (const local of localNotes) {
-    await setMeta(`synced:${local.id}`, new Date().toISOString());
-  }
+    // Record sync timestamps
+    await setMeta('lastSync', new Date().toISOString());
+    for (const local of localNotes) {
+      await setMeta(`synced:${local.id}`, new Date().toISOString());
+    }
 
-  return { synced: remoteNotes.length, conflicts };
+    // Reset failure count and set status to synced
+    await setMeta('syncFailCount', 0);
+    await setMeta('syncStatus', 'synced');
+
+    return { synced: remoteNotes.length, conflicts };
+  } catch (err) {
+    // Increment failure count
+    const newCount = failCount + 1;
+    await setMeta('syncFailCount', newCount);
+
+    if (newCount >= 3) {
+      await setMeta('syncStatus', 'error');
+      return { synced: 0, conflicts: [], error: '连续失败 · 请检查 WebDAV 配置' };
+    } else {
+      await setMeta('syncStatus', 'pending');
+      return { synced: 0, conflicts: [], error: err.message };
+    }
+  }
 }

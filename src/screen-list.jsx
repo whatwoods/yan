@@ -1,10 +1,12 @@
 // screen-list.jsx — Timeline of all notes, grouped by day, with filter chips and search trigger.
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { TOKENS, dayLabel, timeLabel } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, KindBadge, ScrHead } from './components.jsx';
+import { SealStamp, Tag, KindBadge, ScrHead, showToast } from './components.jsx';
 import { Store } from './store.jsx';
+import { getMeta, setMeta } from './db.js';
+import { initWebDAV, syncAll } from './sync.js';
 
 function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose, onTags, initialFilter }) {
   const T = TOKENS, I = ICONS;
@@ -12,7 +14,85 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   const [filter, setFilter] = useState(initialFilter || '全部');
   const [catFilter, setCatFilter] = useState('全部');
   const [categories, setCategories] = useState([]);
+  const [syncStatus, setSyncStatus] = useState('synced');
+  const [syncing, setSyncing] = useState(false);
+  const scrollRef = useRef(null);
+  const pullRef = useRef({ startY: 0, pulling: false });
+
   useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
+
+  // Load sync status on mount and periodically
+  useEffect(() => {
+    const loadStatus = async () => {
+      try {
+        const status = await getMeta('syncStatus');
+        if (status) setSyncStatus(status);
+      } catch {}
+    };
+    loadStatus();
+    const interval = setInterval(loadStatus, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Pull-to-refresh
+  const handleTouchStart = useCallback((e) => {
+    if (scrollRef.current && scrollRef.current.scrollTop === 0) {
+      pullRef.current.startY = e.touches[0].clientY;
+      pullRef.current.pulling = true;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (!pullRef.current.pulling) return;
+    pullRef.current.pulling = false;
+  }, []);
+
+  const handleSync = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const settings = Store.loadSettings?.() || {};
+      const savedWebdav = await getMeta('webdavConfig');
+      if (savedWebdav?.server && savedWebdav?.username) {
+        initWebDAV(savedWebdav);
+        const allNotes = Store.getAllCachedNotes();
+        const result = await syncAll(allNotes);
+        if (result.error) {
+          showToast('同步失败 · 请检查 WebDAV 配置');
+        } else {
+          await setMeta('lastSync', new Date().toISOString());
+          showToast('已同步');
+        }
+      } else {
+        showToast('请先配置 WebDAV');
+      }
+    } catch {
+      showToast('同步失败 · 请检查 WebDAV 配置');
+    } finally {
+      setSyncing(false);
+      const status = await getMeta('syncStatus');
+      if (status) setSyncStatus(status);
+    }
+  }, [syncing]);
+
+  // Sync status indicator component
+  const SyncIcon = useMemo(() => {
+    if (syncing) {
+      return <span style={{ fontSize: 12, color: 'var(--ink-mute)', animation: 'spin 1s linear infinite' }}>&#8635;</span>;
+    }
+    if (syncStatus === 'error') {
+      return (
+        <button className="icon-btn" onClick={() => showToast('同步失败 · 请检查 WebDAV 配置')} aria-label="同步错误"
+          style={{ width: 28, height: 28, color: 'var(--seal)' }}>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>!</span>
+        </button>
+      );
+    }
+    if (syncStatus === 'pending') {
+      return <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ochre)', display: 'inline-block' }} />;
+    }
+    return <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bamboo)', display: 'inline-block' }} />;
+  }, [syncStatus, syncing]);
 
   // Load categories from Store on mount
   useEffect(() => {
@@ -61,6 +141,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
     <div className="screen paper">
       <ScrHead title="笔记本" right={
         <>
+          {SyncIcon}
           <button className="icon-btn" onClick={onSearch} aria-label="搜索"><I.search size={20} /></button>
           <button className="icon-btn" onClick={onTags} aria-label="标签"><I.tag size={20} /></button>
         </>
@@ -117,7 +198,9 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
       </div>
 
       {/* Notes */}
-      <div className="scroll" style={{ flex: 1, padding: '0 20px 88px' }}>
+      <div ref={scrollRef} className="scroll" style={{ flex: 1, padding: '0 20px 88px' }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}>
         {filtered.length === 0 && (
           <div style={{
             background: 'var(--paper-light)', border: `1px dashed var(--fold)`,

@@ -5,6 +5,7 @@ import { formatRelative } from './tokens.jsx';
 import {
   getAllNotes, putNote, deleteNote as dbDeleteNote,
   getMeta, setMeta,
+  enqueueSync, getSyncQueue, clearSyncQueue,
 } from './db.js';
 import { migrate } from './migrate.js';
 import { generateId } from './note-format.js';
@@ -271,7 +272,34 @@ export const Store = {
       Store._notes = Store._notes.filter((x) => x.id !== n.id);
     }
 
-    // 4. Initialize default categories if not present
+    // 4. Drain sync queue: retry any pending writes
+    try {
+      const queue = await getSyncQueue();
+      if (queue.length > 0) {
+        let allSucceeded = true;
+        for (const item of queue) {
+          if (item.action === 'upsert' && item.data) {
+            try {
+              await putNote(item.data);
+            } catch {
+              allSucceeded = false;
+            }
+          }
+        }
+        if (allSucceeded) {
+          await clearSyncQueue();
+          await setMeta('syncStatus', 'synced');
+        }
+      } else {
+        // No pending queue — only set synced if not already in error state
+        const currentStatus = await getMeta('syncStatus');
+        if (!currentStatus) await setMeta('syncStatus', 'synced');
+      }
+    } catch (err) {
+      console.error('Failed to drain sync queue:', err);
+    }
+
+    // 5. Initialize default categories if not present
     const cats = await getMeta('categories');
     if (!cats) {
       await setMeta('categories', DEFAULT_CATEGORIES);
@@ -350,7 +378,13 @@ export const Store = {
       duration: note.duration || null,
     };
 
-    await putNote(fullNote);
+    try {
+      await putNote(fullNote);
+    } catch (err) {
+      console.error('putNote failed, enqueuing:', err);
+      await enqueueSync({ action: 'upsert', note_id: fullNote.id, data: fullNote });
+      await setMeta('syncStatus', 'pending');
+    }
     Store._notes.unshift(fullNote);
     return fullNote;
   },
@@ -367,7 +401,13 @@ export const Store = {
     // Sync backward-compat fields
     if (patch.created) updated.createdAt = new Date(patch.created).getTime();
 
-    await putNote(updated);
+    try {
+      await putNote(updated);
+    } catch (err) {
+      console.error('putNote failed, enqueuing:', err);
+      await enqueueSync({ action: 'upsert', note_id: id, data: updated });
+      await setMeta('syncStatus', 'pending');
+    }
     Store._notes[idx] = updated;
     return updated;
   },
