@@ -11,7 +11,7 @@ export async function parseQuery(question) {
 问题：${question}` },
   ], { temperature: 0.1, maxTokens: 100 });
   try {
-    return JSON.parse(result);
+    return result ? JSON.parse(result) : null;
   } catch {
     return null;
   }

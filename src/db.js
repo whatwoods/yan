@@ -93,7 +93,7 @@ export async function getNotesByCategory(category) {
  * Return notes created within the last N months, excluding soft-deleted.
  * @param {number} months — how many months back
  */
-export async function getRecentNotes(months = 1) {
+export async function getRecentNotes(months = 6) {
   const db = await getDB();
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - months);

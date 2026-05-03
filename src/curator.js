@@ -58,7 +58,7 @@ ${statsText}
   ], { temperature: 0.5, maxTokens: 500 });
 
   try {
-    return JSON.parse(result);
+    return result ? JSON.parse(result) : [];
   } catch {
     return [];
   }

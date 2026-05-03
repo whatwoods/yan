@@ -89,6 +89,7 @@ export async function extractTagsAndPeople(body) {
     { role: 'user', content: `提取标签（最多5个）和人名。回复 JSON：{"tags":["标签1"],"people":["人名1"]}\n\n笔记：${body.slice(0, 300)}` },
   ], { temperature: 0.2, maxTokens: 100 });
   try {
+    if (!result) return { tags: [], people: [] };
     const parsed = JSON.parse(result);
     return { tags: parsed.tags || [], people: parsed.people || [] };
   } catch {

@@ -4,7 +4,18 @@
 import { getMeta, setMeta } from './db.js';
 
 const PBKDF2_ITERATIONS = 600000;
-const SALT = 'biji-master-v1';
+
+// Per-device salt: generated once, stored in localStorage
+function getSalt() {
+  let salt = localStorage.getItem('biji.cryptoSalt');
+  if (!salt) {
+    // Generate a 32-char random salt
+    const arr = crypto.getRandomValues(new Uint8Array(24));
+    salt = btoa(String.fromCharCode(...arr));
+    localStorage.setItem('biji.cryptoSalt', salt);
+  }
+  return salt;
+}
 
 /**
  * Derive an AES-256-GCM key from a password and salt using PBKDF2.
@@ -78,9 +89,9 @@ export const SecretsStore = {
    * @param {object} secrets - { apiKey, webdavPassword, ... }
    */
   async setup(password, secrets) {
-    const verify = await encryptSecrets({ v: 1 }, password, SALT);
+    const verify = await encryptSecrets({ v: 1 }, password, getSalt());
     await setMeta('masterPwVerify', verify);
-    const encrypted = await encryptSecrets(secrets, password, SALT);
+    const encrypted = await encryptSecrets(secrets, password, getSalt());
     await setMeta('secrets', encrypted);
     this._cache = { ...secrets };
     this._password = password;
@@ -93,11 +104,11 @@ export const SecretsStore = {
   async unlock(password) {
     const verify = await getMeta('masterPwVerify');
     if (!verify) return false;
-    const check = await decryptSecrets(verify, password, SALT);
+    const check = await decryptSecrets(verify, password, getSalt());
     if (!check || !check.v) return false;
     const encrypted = await getMeta('secrets');
     if (!encrypted) { this._cache = {}; this._password = password; return true; }
-    const data = await decryptSecrets(encrypted, password, SALT);
+    const data = await decryptSecrets(encrypted, password, getSalt());
     if (!data) return false;
     this._cache = { ...data };
     this._password = password;
@@ -121,7 +132,7 @@ export const SecretsStore = {
    */
   async update(secrets) {
     if (!this._password) return;
-    const encrypted = await encryptSecrets(secrets, this._password, SALT);
+    const encrypted = await encryptSecrets(secrets, this._password, getSalt());
     await setMeta('secrets', encrypted);
     this._cache = { ...secrets };
   },

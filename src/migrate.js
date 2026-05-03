@@ -8,6 +8,15 @@ const STORAGE_NOTES = 'biji.notes.v1';
 const STORAGE_SETTINGS = 'biji.settings.v1';
 const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
 
+function getDeviceFingerprint() {
+  let fp = localStorage.getItem('biji.deviceFingerprint');
+  if (!fp) {
+    fp = Math.random().toString(36).slice(2, 5);
+    localStorage.setItem('biji.deviceFingerprint', fp);
+  }
+  return fp;
+}
+
 // ── Tag-to-category mapping ──────────────────────────────────
 // Old tags used free-form labels; new model uses exactly one of 7 categories.
 const TAG_TO_CATEGORY = {
@@ -111,7 +120,7 @@ function convertNote(old) {
 
   return {
     // Keep old id if it exists; otherwise generate a new-format one
-    id: old.id || generateId('000'),
+    id: old.id || generateId(getDeviceFingerprint()),
     created: createdISO,
     modified: createdISO,
     kind: old.kind || 'text',
