@@ -1,9 +1,13 @@
-// screen-capture.js — Home screen. Default omnibox (per chat: 全能输入).
+// screen-capture.jsx — Home screen. Default omnibox (per chat: 全能输入).
 // Three states: idle (small bar) → text (expanded textarea) → recording (live waveform inline).
 
-function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useState, useEffect, useRef } = React;
+import React, { useState, useEffect, useRef } from 'react';
+import { TOKENS, formatRelative } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+import { SealStamp, BrushTitle, Tag, showToast } from './components.jsx';
+
+export function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
+  const T = TOKENS, I = ICONS;
 
   const [mode, setMode] = useState('idle');
   const [text, setText] = useState('');
@@ -52,7 +56,7 @@ function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
       recRef.current = r;
     } else {
       // No speech API — show a "录音中" placeholder, user types/edits after stop.
-      window.showToast && window.showToast('此浏览器无语音识别 · 已记录时长');
+      showToast('此浏览器无语音识别 · 已记录时长');
     }
   }
 
@@ -161,7 +165,7 @@ function CaptureScreen({ notes, onSave, onOpenNote, persona }) {
             marginBottom: 8, cursor: 'pointer',
           }}>
             <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)', width: 40, flexShrink: 0 }}>
-              {window.formatRelative(n.createdAt)}
+              {formatRelative(n.createdAt)}
             </span>
             <span style={{
               flex: 1, fontFamily: T.fontSerif, fontSize: 14, color: 'var(--ink-soft)',
@@ -360,4 +364,3 @@ function dateLine() {
   return `${md} · 周${wd}`;
 }
 
-window.CaptureScreen = CaptureScreen;

@@ -1,18 +1,30 @@
-// app.js — main React shell, routing, global state.
+// app.jsx — main React shell, routing, global state.
 
-function App() {
-  const { useState, useEffect, useMemo, useCallback } = React;
-  const [notes, setNotes] = useState(() => window.Store.loadNotes());
-  const [settings, setSettings] = useState(() => window.Store.loadSettings());
-  const [route, setRoute] = useState(() => window.Store.isFirstRun() ? 'onboard' : 'capture');
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { TOKENS, PERSONAS } from './tokens.jsx';
+import { Store, autoTitle, autoTags, autoSummary, extractPeople } from './store.jsx';
+import { ToastHost, BottomNav, showToast } from './components.jsx';
+import { CaptureScreen } from './screen-capture.jsx';
+import { ListScreen } from './screen-list.jsx';
+import { DetailScreen } from './screen-detail.jsx';
+import { YanScreen } from './screen-yan.jsx';
+import { SettingsScreen } from './screen-settings.jsx';
+import { OnboardingScreen } from './screen-onboard.jsx';
+import { SearchScreen } from './screen-search.jsx';
+import { TagsScreen } from './screen-tags.jsx';
+
+export function App() {
+  const [notes, setNotes] = useState(() => Store.loadNotes());
+  const [settings, setSettings] = useState(() => Store.loadSettings());
+  const [route, setRoute] = useState(() => Store.isFirstRun() ? 'onboard' : 'capture');
   const [openNoteId, setOpenNoteId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
 
-  const persona = window.PERSONAS[settings.persona] || window.PERSONAS.yan;
+  const persona = PERSONAS[settings.persona] || PERSONAS.yan;
 
   // Apply font choice via CSS var
   useEffect(() => {
-    const T = window.TOKENS;
+    const T = TOKENS;
     const fontMap = {
       serif: T.fontSerif,
       sans: T.fontSans,
@@ -28,7 +40,7 @@ function App() {
   }, [persona.color]);
 
   // Persist settings on change
-  useEffect(() => { window.Store.saveSettings(settings); }, [settings]);
+  useEffect(() => { Store.saveSettings(settings); }, [settings]);
 
   // ── Note actions ─────────────────────────────────────────
   const saveNewNote = useCallback((draft) => {
@@ -36,19 +48,19 @@ function App() {
     const note = {
       id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       kind: draft.kind || 'text',
-      title: window.autoTitle(body),
+      title: autoTitle(body),
       body,
       photo: draft.photo || null,
       duration: draft.duration || null,
-      tags: settings.autoTag ? window.autoTags(body) : [],
+      tags: settings.autoTag ? autoTags(body) : [],
       summary: '', // will fill async
-      people: window.extractPeople(body),
+      people: extractPeople(body),
       createdAt: Date.now(),
       pinned: false,
     };
     setNotes((prev) => {
       const next = [note, ...prev];
-      window.Store.saveNotes(next);
+      Store.saveNotes(next);
       return next;
     });
 
@@ -57,21 +69,21 @@ function App() {
       setNotes((prev) => {
         const idx = prev.findIndex((n) => n.id === note.id);
         if (idx === -1) return prev;
-        const updated = { ...prev[idx], summary: window.autoSummary(body) };
+        const updated = { ...prev[idx], summary: autoSummary(body) };
         const next = [...prev]; next[idx] = updated;
-        window.Store.saveNotes(next);
+        Store.saveNotes(next);
         return next;
       });
-      window.showToast?.(`${persona.name}已识其要意`);
+      showToast(`${persona.name}已识其要意`);
     }, 900);
 
-    window.showToast?.('已收');
+    showToast('已收');
   }, [settings.autoTag, persona.name]);
 
   const updateNote = useCallback((id, patch) => {
     setNotes((prev) => {
       const next = prev.map((n) => n.id === id ? { ...n, ...patch } : n);
-      window.Store.saveNotes(next);
+      Store.saveNotes(next);
       return next;
     });
   }, []);
@@ -79,10 +91,10 @@ function App() {
   const deleteNote = useCallback((id) => {
     setNotes((prev) => {
       const next = prev.filter((n) => n.id !== id);
-      window.Store.saveNotes(next);
+      Store.saveNotes(next);
       return next;
     });
-    window.showToast?.('已删');
+    showToast('已删');
   }, []);
 
   // ── Routing helpers ──────────────────────────────────────
@@ -106,15 +118,15 @@ function App() {
   const onResetSeed = () => {
     if (!confirm('用示例数据覆盖当前所有笔记？')) return;
     localStorage.removeItem('biji.notes.v1');
-    const fresh = window.Store.loadNotes();
+    const fresh = Store.loadNotes();
     setNotes(fresh);
-    window.showToast?.('已重置');
+    showToast('已重置');
   };
   const onClearAll = () => {
     if (!confirm('清空全部笔记？此操作不可撤销。')) return;
-    window.Store.saveNotes([]);
+    Store.saveNotes([]);
     setNotes([]);
-    window.showToast?.('已清空');
+    showToast('已清空');
   };
   const onExport = () => {
     const md = notes.map((n) => {
@@ -137,14 +149,14 @@ function App() {
   // First-run takeover
   if (route === 'onboard') {
     return (
-      <window.ToastHost>
+      <ToastHost>
         <div className="app">
-          <window.OnboardingScreen persona={persona} onStart={() => {
-            window.Store.markRun();
+          <OnboardingScreen persona={persona} onStart={() => {
+            Store.markRun();
             setRoute('capture');
           }} />
         </div>
-      </window.ToastHost>
+      </ToastHost>
     );
   }
 
@@ -152,10 +164,10 @@ function App() {
   const listInitialFilter = filterTag;
 
   return (
-    <window.ToastHost>
+    <ToastHost>
       <div className="app">
         {route === 'capture' && (
-          <window.CaptureScreen
+          <CaptureScreen
             notes={notes}
             onSave={saveNewNote}
             onOpenNote={openNote}
@@ -163,7 +175,7 @@ function App() {
           />
         )}
         {route === 'list' && (
-          <window.ListScreen
+          <ListScreen
             notes={notes}
             initialFilter={listInitialFilter}
             density={settings.density}
@@ -174,7 +186,7 @@ function App() {
           />
         )}
         {route === 'detail' && openNote_ && (
-          <window.DetailScreen
+          <DetailScreen
             note={openNote_}
             allNotes={notes}
             onBack={() => setRoute('list')}
@@ -184,10 +196,10 @@ function App() {
           />
         )}
         {route === 'yan' && (
-          <window.YanScreen notes={notes} persona={persona} />
+          <YanScreen notes={notes} persona={persona} />
         )}
         {route === 'settings' && (
-          <window.SettingsScreen
+          <SettingsScreen
             settings={settings}
             persona={persona}
             totalNotes={notes.length}
@@ -198,7 +210,7 @@ function App() {
           />
         )}
         {route === 'search' && (
-          <window.SearchScreen
+          <SearchScreen
             notes={notes}
             onBack={() => setRoute('list')}
             onOpenNote={openNote}
@@ -206,7 +218,7 @@ function App() {
           />
         )}
         {route === 'tags' && (
-          <window.TagsScreen
+          <TagsScreen
             notes={notes}
             onBack={() => setRoute('list')}
             persona={persona}
@@ -219,7 +231,7 @@ function App() {
 
         {/* Bottom nav — hidden on detail/search/tags/onboard */}
         {['capture', 'list', 'yan', 'settings'].includes(route) && (
-          <window.BottomNav active={route} onChange={(k) => {
+          <BottomNav active={route} onChange={(k) => {
             if (k === route) return;
             setOpenNoteId(null);
             setFilterTag(null);
@@ -227,8 +239,6 @@ function App() {
           }} />
         )}
       </div>
-    </window.ToastHost>
+    </ToastHost>
   );
 }
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);

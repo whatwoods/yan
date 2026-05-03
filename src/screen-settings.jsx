@@ -1,9 +1,12 @@
-// screen-settings.js — Settings page with persona, theme, data sections.
+// screen-settings.jsx — Settings page with persona, theme, data sections.
 
-function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const PERSONAS = window.PERSONAS;
-  const { useState } = React;
+import React, { useState } from 'react';
+import { TOKENS, PERSONAS } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+import { SealStamp, ScrHead } from './components.jsx';
+
+export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes }) {
+  const T = TOKENS, I = ICONS;
 
   const [showPersona, setShowPersona] = useState(false);
   const [showFont, setShowFont] = useState(false);
@@ -91,7 +94,7 @@ function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, on
 }
 
 function Section({ title, children }) {
-  const T = window.TOKENS;
+  const T = TOKENS;
   return (
     <div style={{ marginBottom: 22 }}>
       <div style={{
@@ -106,7 +109,7 @@ function Section({ title, children }) {
 }
 
 function Row({ icon, label, value, last, onClick, accent }) {
-  const T = window.TOKENS;
+  const T = TOKENS;
   return (
     <div onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 12,
@@ -134,8 +137,7 @@ function Row({ icon, label, value, last, onClick, accent }) {
 }
 
 function PersonaSheet({ current, onPick, onClose }) {
-  const T = window.TOKENS;
-  const PERSONAS = window.PERSONAS;
+  const T = TOKENS;
   return (
     <>
       <div className="sheet-mask" onClick={onClose} />
@@ -178,7 +180,7 @@ function PersonaSheet({ current, onPick, onClose }) {
 }
 
 function FontSheet({ current, onPick, onClose }) {
-  const T = window.TOKENS;
+  const T = TOKENS;
   const fonts = [
     ['serif', '思源宋体', T.fontSerif, '经典 · 端庄'],
     ['sans',  '思源黑体', T.fontSans,  '现代 · 清晰'],
@@ -222,4 +224,3 @@ function FontSheet({ current, onPick, onClose }) {
   );
 }
 
-window.SettingsScreen = SettingsScreen;

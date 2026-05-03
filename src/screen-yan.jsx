@@ -1,8 +1,13 @@
-// screen-yan.js — 砚: insights main + chat overlay (FAB).
+// screen-yan.jsx — 砚: insights main + chat overlay (FAB).
 
-function YanScreen({ notes, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useState } = React;
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { TOKENS } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+import { SealStamp, BrushTitle, Tag } from './components.jsx';
+import { askYan } from './store.jsx';
+
+export function YanScreen({ notes, persona }) {
+  const T = TOKENS, I = ICONS;
   const [chatOpen, setChatOpen] = useState(false);
 
   return (
@@ -74,8 +79,7 @@ function YanScreen({ notes, persona }) {
 }
 
 function YanInsightBody({ notes, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useMemo } = React;
+  const T = TOKENS, I = ICONS;
 
   const stats = useMemo(() => computeStats(notes), [notes]);
 
@@ -193,8 +197,7 @@ function YanInsightBody({ notes, persona }) {
 }
 
 function YanChatBody({ notes, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useState, useRef, useEffect } = React;
+  const T = TOKENS, I = ICONS;
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -217,7 +220,7 @@ function YanChatBody({ notes, persona }) {
     setDraft('');
     setThinking(true);
     setTimeout(() => {
-      const r = window.askYan(q, notes);
+      const r = askYan(q, notes);
       setMessages((m) => [...m, { role: 'assistant', text: r.text, refs: r.refs }]);
       setThinking(false);
     }, 700 + Math.random() * 600);
@@ -398,4 +401,3 @@ function computeStats(notes) {
   };
 }
 
-window.YanScreen = YanScreen;

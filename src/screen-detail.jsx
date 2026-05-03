@@ -1,8 +1,13 @@
-// screen-detail.js — Single note detail with AI summary & tags.
+// screen-detail.jsx — Single note detail with AI summary & tags.
 
-function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useState } = React;
+import React, { useState } from 'react';
+import { TOKENS, formatRelative, fullDate } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+import { SealStamp, Tag, showToast } from './components.jsx';
+import { autoTitle, autoSummary, autoTags } from './store.jsx';
+
+export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
+  const T = TOKENS, I = ICONS;
 
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(note?.body || '');
@@ -19,17 +24,17 @@ function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
   function saveEdit() {
     onUpdate(note.id, {
       body,
-      title: window.autoTitle(body),
-      summary: window.autoSummary(body),
-      tags: window.autoTags(body),
+      title: autoTitle(body),
+      summary: autoSummary(body),
+      tags: autoTags(body),
     });
     setEditing(false);
-    window.showToast?.('已收');
+    showToast('已收');
   }
 
   function togglePin() {
     onUpdate(note.id, { pinned: !note.pinned });
-    window.showToast?.(note.pinned ? '取下' : '钉住');
+    showToast(note.pinned ? '取下' : '钉住');
   }
 
   function handleDelete() {
@@ -74,7 +79,7 @@ function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
       <div className="scroll" style={{ flex: 1, padding: '4px 24px 24px' }}>
         {/* Meta */}
         <div className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)', marginBottom: 8, letterSpacing: '.06em' }}>
-          {window.fullDate(note.createdAt)} · {kindLabel(note.kind)}
+          {fullDate(note.createdAt)} · {kindLabel(note.kind)}
           {charCount ? ` · ${charCount} 字` : ''}
           {note.duration ? ` · ${note.duration}` : ''}
         </div>
@@ -201,7 +206,7 @@ function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
                     fontSize: 13, fontFamily: T.fontSerif, color: 'var(--ink-soft)',
                   }}>
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)', width: 60 }}>
-                      {window.formatRelative(n.createdAt)}
+                      {formatRelative(n.createdAt)}
                     </span>
                     <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {n.title}
@@ -219,7 +224,7 @@ function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
 }
 
 function Field({ label, children }) {
-  const T = window.TOKENS;
+  const T = TOKENS;
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minHeight: 28 }}>
       <span style={{
@@ -247,4 +252,3 @@ function menuItem(T) {
   };
 }
 
-window.DetailScreen = DetailScreen;

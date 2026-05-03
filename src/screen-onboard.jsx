@@ -1,7 +1,12 @@
-// screen-onboard.js — First launch welcome.
+// screen-onboard.jsx — First launch welcome.
 
-function OnboardingScreen({ onStart, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
+import React from 'react';
+import { TOKENS } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+import { SealStamp } from './components.jsx';
+
+export function OnboardingScreen({ onStart, persona }) {
+  const T = TOKENS, I = ICONS;
 
   return (
     <div className="screen paper" style={{
@@ -86,4 +91,3 @@ function Bullet({ children, color }) {
   );
 }
 
-window.OnboardingScreen = OnboardingScreen;

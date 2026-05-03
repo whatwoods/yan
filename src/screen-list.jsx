@@ -1,8 +1,12 @@
-// screen-list.js — Timeline of all notes, grouped by day, with filter chips and search trigger.
+// screen-list.jsx — Timeline of all notes, grouped by day, with filter chips and search trigger.
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { TOKENS, dayLabel, timeLabel } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+import { SealStamp, Tag, KindBadge, ScrHead } from './components.jsx';
 
 function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose, onTags, initialFilter }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useState, useMemo, useEffect } = React;
+  const T = TOKENS, I = ICONS;
 
   const [filter, setFilter] = useState(initialFilter || '全部');
   useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
@@ -26,7 +30,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   const grouped = useMemo(() => {
     const map = new Map();
     filtered.forEach((n) => {
-      const key = window.dayLabel(n.createdAt);
+      const key = dayLabel(n.createdAt);
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(n);
     });
@@ -137,7 +141,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
 }
 
 function NoteCard({ note, pad, onOpen }) {
-  const T = window.TOKENS;
+  const T = TOKENS;
   return (
     <div onClick={onOpen} style={{
       background: 'var(--paper-light)',
@@ -152,7 +156,7 @@ function NoteCard({ note, pad, onOpen }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <KindBadge kind={note.kind} dur={note.duration} />
         <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>
-          {window.timeLabel(note.createdAt)}
+          {timeLabel(note.createdAt)}
         </span>
         {note.pinned && <span style={{ fontSize: 11, color: 'var(--seal)' }}>· 钉</span>}
       </div>
@@ -183,5 +187,4 @@ function NoteCard({ note, pad, onOpen }) {
   );
 }
 
-window.ListScreen = ListScreen;
-window.NoteCard = NoteCard;
+export { ListScreen };

@@ -1,6 +1,11 @@
-// main.jsx — Vite entry point. Will be completed after all modules are converted.
+// main.jsx — Vite entry point.
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { App } from './app.jsx';
+import { showToast } from './components.jsx';
 
-// Temporary stub — will be replaced in Task 4 after all screens are converted.
-console.log('Vite entry loaded');
+// Backward compatibility: some code may still call window.showToast
+window.showToast = showToast;
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);

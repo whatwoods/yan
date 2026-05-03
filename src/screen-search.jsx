@@ -1,8 +1,11 @@
-// screen-search.js — Search overlay with AI summary line.
+// screen-search.jsx — Search overlay with AI summary line.
 
-function SearchScreen({ notes, onBack, onOpenNote, persona }) {
-  const T = window.TOKENS, I = window.ICONS;
-  const { useState, useMemo, useRef, useEffect } = React;
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { TOKENS, formatRelative } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
+
+export function SearchScreen({ notes, onBack, onOpenNote, persona }) {
+  const T = TOKENS, I = ICONS;
 
   const [q, setQ] = useState('');
   const inputRef = useRef(null);
@@ -30,7 +33,7 @@ function SearchScreen({ notes, onBack, onOpenNote, persona }) {
   }, [notes]);
 
   const aiLine = q.trim() && matched.length > 0
-    ? `你提到 ${highlight(q)} 共 ${matched.length} 次。最近一次在 ${window.formatRelative(matched[0].createdAt)}。`
+    ? `你提到 ${highlight(q)} 共 ${matched.length} 次。最近一次在 ${formatRelative(matched[0].createdAt)}。`
     : null;
 
   return (
@@ -123,7 +126,7 @@ function SearchScreen({ notes, onBack, onOpenNote, persona }) {
               display: 'flex', justifyContent: 'space-between',
               marginBottom: 4, fontSize: 11, color: 'var(--ink-fade)',
             }}>
-              <span>{window.formatRelative(it.createdAt)}</span>
+              <span>{formatRelative(it.createdAt)}</span>
               <span>{(it.tags || []).slice(0, 2).map((t) => t.label).join(' · ')}</span>
             </div>
             <div style={{ fontFamily: T.fontSerif, fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>
@@ -158,4 +161,3 @@ function highlightInText(text, q) {
   );
 }
 
-window.SearchScreen = SearchScreen;
