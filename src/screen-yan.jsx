@@ -7,6 +7,8 @@ import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
 import { generateInsight, getAIConfig } from './ai.js';
 import { getMeta, setMeta } from './db.js';
+import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCuratorSuggestion, rejectCuratorSuggestion } from './curator.js';
+import { askYanRAG } from './rag.js';
 
 export function YanScreen({ notes, persona }) {
   const T = TOKENS, I = ICONS;
@@ -127,6 +129,46 @@ function YanInsightBody({ notes, persona }) {
     }
   }, [monthNotes, monthLabel, insightKey]);
 
+  // Curator state
+  const [curatorSuggestions, setCuratorSuggestions] = useState([]);
+  const [curatorLoading, setCuratorLoading] = useState(false);
+
+  // Check if curator should run on mount or when notes change
+  useEffect(() => {
+    (async () => {
+      if (!aiReady) return;
+      const shouldRun = await shouldRunCurator(notes);
+      if (!shouldRun) return;
+      setCuratorLoading(true);
+      try {
+        const suggestions = await generateCuratorSuggestions(notes);
+        setCuratorSuggestions(suggestions);
+        await markCuratorRun(notes);
+      } catch {
+        // silent fail
+      } finally {
+        setCuratorLoading(false);
+      }
+    })();
+  }, [notes, aiReady]);
+
+  const handleApplyCurator = useCallback(async (suggestion) => {
+    await applyCuratorSuggestion(suggestion, notes, async (id, patch) => {
+      // updateFn is called for each note that needs updating
+      // The parent will refresh notes from store
+      const { Store } = await import('./store.jsx');
+      await Store.updateNote(id, patch);
+    });
+    setCuratorSuggestions(prev => prev.filter(s => s !== suggestion));
+    // Trigger a page-level refresh by dispatching a custom event
+    window.dispatchEvent(new CustomEvent('notes-updated'));
+  }, [notes]);
+
+  const handleRejectCurator = useCallback(async (suggestion) => {
+    await rejectCuratorSuggestion(suggestion);
+    setCuratorSuggestions(prev => prev.filter(s => s !== suggestion));
+  }, []);
+
   return (
     <div className="scroll" style={{ flex: 1, padding: '14px 16px 100px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -213,6 +255,74 @@ function YanInsightBody({ notes, persona }) {
               {new Date(aiInsight.generated_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Curator suggestions */}
+      {aiReady && (curatorLoading || curatorSuggestions.length > 0) && (
+        <div className="card" style={{ borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 14 }}>{persona.mark}</span>
+            <span style={{
+              fontSize: 11, color: persona.color, fontWeight: 600,
+              letterSpacing: '.08em',
+            }}>
+              {curatorLoading ? '正在整理标签...' : `砚整理了 ${curatorSuggestions.length} 条建议`}
+            </span>
+          </div>
+          {curatorLoading && (
+            <div style={{ fontSize: 12, color: 'var(--ink-fade)', fontFamily: T.fontSerif }}>
+              正在分析标签使用情况…
+            </div>
+          )}
+          {!curatorLoading && curatorSuggestions.map((s, i) => {
+            const typeIcons = { merge: '⊕', rename: '✎', archive: '◻', new: '＋' };
+            const typeLabels = { merge: '合并', rename: '重命名', archive: '归档', new: '新增' };
+            return (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: '8px 0',
+                borderTop: i > 0 ? '1px solid var(--fold)' : 'none',
+              }}>
+                <span style={{ fontSize: 16, color: persona.color, lineHeight: 1.2, paddingTop: 1 }}>
+                  {typeIcons[s.type] || '•'}
+                </span>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 13, color: 'var(--ink)',
+                    fontFamily: T.fontSerif, lineHeight: 1.5,
+                  }}>
+                    {s.type === 'merge' || s.type === 'rename' ? (
+                      <>
+                        {s.from.map(f => <span key={f} style={{ color: 'var(--seal)' }}>#{f}</span>).reduce((prev, curr) => [prev, ' + ', curr])}
+                        {' '}→ <span style={{ color: 'var(--bamboo)' }}>#{s.to}</span>
+                        {' '}<span style={{ color: 'var(--ink-mute)', fontSize: 12 }}>({typeLabels[s.type]})</span>
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--ink-soft)' }}>{s.from?.join('、') || ''} ({typeLabels[s.type]})</span>
+                    )}
+                  </div>
+                  {s.reason && (
+                    <div style={{ fontSize: 11, color: 'var(--ink-fade)', fontFamily: T.fontSerif, marginTop: 2 }}>
+                      {s.reason}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={() => handleApplyCurator(s)} style={{
+                    border: 'none', background: persona.color, color: '#fff',
+                    borderRadius: 6, padding: '3px 10px', fontSize: 11,
+                    cursor: 'pointer', fontFamily: T.fontSerif,
+                  }}>应用</button>
+                  <button onClick={() => handleRejectCurator(s)} style={{
+                    border: '1px solid var(--fold)', background: 'transparent',
+                    borderRadius: 6, padding: '3px 10px', fontSize: 11,
+                    color: 'var(--ink-mute)', cursor: 'pointer', fontFamily: T.fontSerif,
+                  }}>忽略</button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -316,11 +426,23 @@ function YanChatBody({ notes, persona }) {
     setMessages((m) => [...m, { role: 'user', text: q }]);
     setDraft('');
     setThinking(true);
-    setTimeout(() => {
-      const r = askYan(q, notes);
-      setMessages((m) => [...m, { role: 'assistant', text: r.text, refs: r.refs }]);
-      setThinking(false);
-    }, 700 + Math.random() * 600);
+    (async () => {
+      try {
+        const aiConfig = await getAIConfig();
+        let result;
+        if (aiConfig.apiKey) {
+          result = await askYanRAG(q, notes);
+        } else {
+          result = askYan(q, notes);
+        }
+        setMessages((m) => [...m, { role: 'assistant', text: result.text, refs: result.refs }]);
+      } catch {
+        const fallback = askYan(q, notes);
+        setMessages((m) => [...m, { role: 'assistant', text: fallback.text, refs: fallback.refs }]);
+      } finally {
+        setThinking(false);
+      }
+    })();
   }
 
   return (
