@@ -64,7 +64,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   const scrollRef = useRef(null);
   const pullRef = useRef({ startY: 0, pulling: false });
 
-  useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
+  useEffect(() => { setFilter(initialFilter || '全部'); }, [initialFilter]);
 
   // Load sync status on mount and periodically
   useEffect(() => {

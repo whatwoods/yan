@@ -79,6 +79,7 @@ export function App() {
   // ── Note actions ─────────────────────────────────────────
   const saveNewNote = useCallback(async (draft) => {
     const body = draft.body || '';
+    if (showSetupHint) { Store.markRun(); setShowSetupHint(false); }
     const note = {
       kind: draft.kind || 'text',
       title: autoTitle(body),
@@ -102,12 +103,13 @@ export function App() {
       const categories = await Store.getCategories();
       const aiResult = await processNoteWithAI(addedNote, categories);
       if (aiResult) {
-        await Store.updateNote(addedNote.id, aiResult);
+        const patch = settings.autoTag ? aiResult : { ...aiResult, tags: addedNote.tags || [] };
+        await Store.updateNote(addedNote.id, patch);
       } else {
         // Rule-based fallback
         await Store.updateNote(addedNote.id, {
           category: addedNote.category || '想法',
-          tags: autoTags(body),
+          tags: settings.autoTag ? autoTags(body) : (addedNote.tags || []),
           summary: autoSummary(body),
           people: extractPeople(body),
         });
@@ -115,7 +117,7 @@ export function App() {
       setNotes(Store.getNotes());
       showToast(`${persona.name}已识其要意`);
     }, 1500);
-  }, [settings.autoTag, persona.name]);
+  }, [settings.autoTag, persona.name, showSetupHint]);
 
   const updateNote = useCallback(async (id, patch) => {
     await Store.updateNote(id, patch);
@@ -130,7 +132,7 @@ export function App() {
 
   // ── Routing helpers ──────────────────────────────────────
   const openNote = (id) => { setOpenNoteId(id); setRoute('detail'); };
-  const closeNote = () => { setOpenNoteId(null); setRoute('list'); };
+  const closeNote = () => { setOpenNoteId(null); setFilterTag(null); setRoute('list'); };
   const goSearch = () => setRoute('search');
   const goTags = () => setRoute('tags');
 
@@ -184,11 +186,6 @@ export function App() {
   // ── Derived state (must be before any early returns) ──────
   const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
 
-  // First-run: mark as run immediately (no takeover)
-  useEffect(() => {
-    if (showSetupHint) Store.markRun();
-  }, [showSetupHint]);
-
   // ── Loading screen ───────────────────────────────────────
   if (loading) {
     return (
@@ -219,8 +216,8 @@ export function App() {
             onOpenNote={openNote}
             persona={persona}
             showSetupHint={showSetupHint}
-            onDismissSetup={() => setShowSetupHint(false)}
-            onGoSettings={() => { setShowSetupHint(false); setRoute('settings'); }}
+            onDismissSetup={() => { Store.markRun(); setShowSetupHint(false); }}
+            onGoSettings={() => { Store.markRun(); setShowSetupHint(false); setRoute('settings'); }}
           />
         )}
         <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'var(--font-serif)', color: 'var(--ink-mute)' }}>加载中…</div>}>
@@ -239,7 +236,7 @@ export function App() {
             <DetailScreen
               note={openNote_}
               allNotes={notes}
-              onBack={() => setRoute('list')}
+              onBack={closeNote}
               onUpdate={updateNote}
               onDelete={deleteNote}
               persona={persona}
@@ -264,7 +261,7 @@ export function App() {
           {route === 'search' && (
             <SearchScreen
               notes={notes}
-              onBack={() => setRoute('list')}
+              onBack={() => { setFilterTag(null); setRoute('list'); }}
               onOpenNote={openNote}
               persona={persona}
             />
@@ -272,7 +269,7 @@ export function App() {
           {route === 'tags' && (
             <TagsScreen
               notes={notes}
-              onBack={() => setRoute('list')}
+              onBack={() => { setFilterTag(null); setRoute('list'); }}
               persona={persona}
               onPickTag={(label) => {
                 setFilterTag(label);
