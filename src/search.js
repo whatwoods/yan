@@ -27,3 +27,31 @@ export function rebuildSearchIndex(notes) {
   searchIndex = null;
   buildSearchIndex(notes);
 }
+
+export function addNoteToIndex(note) {
+  if (!searchIndex) return;
+  try {
+    searchIndex.add({ id: note.id, title: note.title || '', body: note.body || '' });
+  } catch (e) {
+    console.warn('[search] 添加索引失败:', e);
+  }
+}
+
+export function updateNoteInIndex(note) {
+  if (!searchIndex) return;
+  try {
+    searchIndex.discard(note.id);
+    searchIndex.add({ id: note.id, title: note.title || '', body: note.body || '' });
+  } catch (e) {
+    console.warn('[search] 更新索引失败:', e);
+  }
+}
+
+export function removeNoteFromIndex(id) {
+  if (!searchIndex) return;
+  try {
+    searchIndex.discard(id);
+  } catch (e) {
+    console.warn('[search] 删除索引失败:', e);
+  }
+}

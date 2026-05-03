@@ -283,7 +283,7 @@ export async function pushConflict(note) {
  * @returns {Promise<{ synced: number, conflicts: Array<{ local: object, remote: object }>, error?: string }>}
  */
 export async function syncAll(localNotes, extra = {}) {
-  if (!client) return { synced: 0, conflicts: [] };
+  if (!client) return { synced: 0, conflicts: [], upserted: [] };
 
   const failCount = (await getMeta('syncFailCount')) || 0;
 
@@ -292,6 +292,7 @@ export async function syncAll(localNotes, extra = {}) {
     const remoteNotes = await pullNotes();
     const remoteMap = new Map(remoteNotes.map(n => [n.id, n]));
     const conflicts = [];
+    const upserted = [];
 
     for (const local of localNotes) {
       const remote = remoteMap.get(local.id);
@@ -311,6 +312,7 @@ export async function syncAll(localNotes, extra = {}) {
             await pushConflict(remote);
           } else {
             await putNote(remote);
+            upserted.push(remote);
           }
         }
       }
@@ -320,15 +322,15 @@ export async function syncAll(localNotes, extra = {}) {
     // New remote notes not in local
     for (const [, remote] of remoteMap) {
       await putNote(remote);
+      upserted.push(remote);
     }
 
     // Drain sync queue
     const queue = await getSyncQueue();
     for (const item of queue) {
       try {
-        if (item.action === 'push' && item.note_id) {
-          const note = localNotes.find(n => n.id === item.note_id);
-          if (note) await pushNote(note);
+        if (item.action === 'upsert' && item.data) {
+          await pushNote(item.data);
         }
       } catch (e) { console.warn('[sync] 队列推送失败:', e.message); }
     }
@@ -367,17 +369,17 @@ export async function syncAll(localNotes, extra = {}) {
     await setMeta('syncFailCount', 0);
     await setMeta('syncStatus', 'synced');
 
-    return { synced: remoteNotes.length, conflicts };
+    return { synced: remoteNotes.length, conflicts, upserted };
   } catch (err) {
     const newCount = failCount + 1;
     await setMeta('syncFailCount', newCount);
 
     if (newCount >= 3) {
       await setMeta('syncStatus', 'error');
-      return { synced: 0, conflicts: [], error: '连续失败 · 请检查 WebDAV 配置' };
+      return { synced: 0, conflicts: [], upserted: [], error: '连续失败 · 请检查 WebDAV 配置' };
     } else {
       await setMeta('syncStatus', 'pending');
-      return { synced: 0, conflicts: [], error: err.message };
+      return { synced: 0, conflicts: [], upserted: [], error: err.message };
     }
   }
 }

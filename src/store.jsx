@@ -11,11 +11,11 @@ import { migrate } from './migrate.js';
 import { generateId } from './note-format.js';
 
 // Re-export from extracted modules so existing consumers keep working
-export { buildSearchIndex, searchNotes, rebuildSearchIndex } from './search.js';
+export { buildSearchIndex, searchNotes, rebuildSearchIndex, addNoteToIndex, updateNoteInIndex, removeNoteFromIndex } from './search.js';
 export { autoTags, autoTitle, autoSummary, extractPeople, processNoteWithAI, askYan } from './ai-tagger.js';
 export { TAG_TO_CATEGORY } from './tag-colors.js';
 
-import { buildSearchIndex } from './search.js';
+import { buildSearchIndex, addNoteToIndex, updateNoteInIndex, removeNoteFromIndex } from './search.js';
 import { TAG_TO_CATEGORY } from './tag-colors.js';
 
 const STORAGE_FIRST_RUN = 'biji.firstRun.v1';
@@ -224,6 +224,7 @@ export const Store = {
       await setMeta('syncStatus', 'pending');
     }
     Store._notes.unshift(fullNote);
+    addNoteToIndex(fullNote);
     return fullNote;
   },
 
@@ -247,6 +248,7 @@ export const Store = {
       await setMeta('syncStatus', 'pending');
     }
     Store._notes[idx] = updated;
+    updateNoteInIndex(updated);
     return updated;
   },
 
@@ -254,6 +256,7 @@ export const Store = {
     // Hard delete
     await dbDeleteNote(id);
     Store._notes = Store._notes.filter((n) => n.id !== id);
+    removeNoteFromIndex(id);
   },
 
   /**
