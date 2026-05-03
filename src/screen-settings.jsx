@@ -8,14 +8,7 @@ import { Store, DEFAULT_CATEGORIES } from './store.jsx';
 import { initWebDAV, testConnection, syncAll } from './sync.js';
 import { encryptSecrets, decryptSecrets } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
-
-// Hardcoded AI providers (ai.js doesn't exist yet)
-const AI_PROVIDERS = [
-  { id: 'anthropic', name: 'Anthropic', defaultEndpoint: 'https://api.anthropic.com' },
-  { id: 'openai', name: 'OpenAI', defaultEndpoint: 'https://api.openai.com/v1' },
-  { id: 'deepseek', name: 'DeepSeek', defaultEndpoint: 'https://api.deepseek.com' },
-  { id: 'custom', name: '自定义', defaultEndpoint: '' },
-];
+import { PROVIDERS, fetchModels as aiFetchModels } from './ai.js';
 
 const META_SALT = 'biji-master-v1';
 
@@ -26,7 +19,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   const [showFont, setShowFont] = useState(false);
 
   // AI config state
-  const [aiConfig, setAiConfig] = useState({ provider: 'anthropic', endpoint: '', apiKey: '' });
+  const [aiConfig, setAiConfig] = useState({ provider: 'deepseek', endpoint: '', apiKey: '', models: [], defaultModel: '' });
   const [aiTesting, setAiTesting] = useState(false);
   const [aiModels, setAiModels] = useState([]);
 
@@ -84,23 +77,20 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     setAiTesting(true);
     setAiModels([]);
     try {
-      // Simple endpoint reachability test
-      const endpoint = aiConfig.endpoint || AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.defaultEndpoint || '';
+      const endpoint = aiConfig.endpoint || PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || '';
       if (!endpoint || !aiConfig.apiKey) {
         showToast('请填写端点和密钥');
         return;
       }
-      // Try a minimal request to list models
-      const res = await fetch(endpoint + '/models', {
-        headers: { 'Authorization': `Bearer ${aiConfig.apiKey}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const models = (data.data || data.models || []).map(m => m.id || m).slice(0, 10);
+      const models = await aiFetchModels(endpoint, aiConfig.apiKey);
+      if (models.length > 0) {
         setAiModels(models);
-        showToast('连接成功');
+        const updated = { ...aiConfig, models, defaultModel: aiConfig.defaultModel || models[0] };
+        setAiConfig(updated);
+        await setMeta('aiConfig', updated);
+        showToast(`连接成功 · ${models.length} 个模型`);
       } else {
-        showToast(`连接失败: ${res.status}`);
+        showToast('连接失败: 未获取到模型列表');
       }
     } catch (e) {
       showToast('连接失败: ' + (e.message || '网络错误'));
@@ -253,10 +243,10 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         {/* AI Provider */}
         <Section title="AI 供应商">
           <Row icon={<I.globe size={14} />} label="供应商"
-            value={AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.name || '未设置'}
+            value={PROVIDERS.find(p => p.id === aiConfig.provider)?.name || '未设置'}
             onClick={() => {
-              const idx = AI_PROVIDERS.findIndex(p => p.id === aiConfig.provider);
-              const next = AI_PROVIDERS[(idx + 1) % AI_PROVIDERS.length];
+              const idx = PROVIDERS.findIndex(p => p.id === aiConfig.provider);
+              const next = PROVIDERS[(idx + 1) % PROVIDERS.length];
               saveAiConfig({ ...aiConfig, provider: next.id, endpoint: next.defaultEndpoint });
             }} />
           <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
@@ -266,7 +256,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
               value={aiConfig.endpoint}
               onChange={(e) => setAiConfig({ ...aiConfig, endpoint: e.target.value })}
               onBlur={() => saveAiConfig(aiConfig)}
-              placeholder={AI_PROVIDERS.find(p => p.id === aiConfig.provider)?.defaultEndpoint || 'https://...'}
+              placeholder={PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || 'https://...'}
               style={inputStyle(T)}
             />
           </div>
