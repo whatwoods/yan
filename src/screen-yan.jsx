@@ -43,7 +43,7 @@ export function YanScreen({ notes, persona }) {
         <button className="icon-btn" aria-label="更多"><I.more size={20} /></button>
       </div>
 
-      <YanInsightBody notes={notes} persona={persona} />
+      <YanInsightBody notes={notes} persona={persona} categories={categories} existingTags={existingTags} />
 
       {/* FAB to open chat */}
       {!chatOpen && (
@@ -87,7 +87,7 @@ export function YanScreen({ notes, persona }) {
                 <I.close size={20} />
               </button>
             </div>
-            <YanChatBody notes={notes} persona={persona} />
+            <YanChatBody notes={notes} persona={persona} categories={categories} existingTags={existingTags} />
           </div>
         </>
       )}
@@ -95,7 +95,7 @@ export function YanScreen({ notes, persona }) {
   );
 }
 
-function YanInsightBody({ notes, persona }) {
+function YanInsightBody({ notes, persona, categories }) {
   const T = TOKENS, I = ICONS;
 
   const stats = useMemo(() => computeStats(notes), [notes]);
@@ -422,7 +422,7 @@ function YanInsightBody({ notes, persona }) {
   );
 }
 
-function YanChatBody({ notes, persona }) {
+function YanChatBody({ notes, persona, categories, existingTags }) {
   const T = TOKENS, I = ICONS;
   const [messages, setMessages] = useState([
     {
