@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#f4ede1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="笔记">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="一本会思考的本子 — 文字、语音、照片，砚为你识其要意。">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>笔记 · 一本会思考的本子</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&family=ZCOOL+XiaoWei&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="root">
+  <div class="boot">
+    <div class="boot-seal">砚</div>
+    <div class="boot-text">研墨…</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="src/tokens.js"></script>
+<script type="text/babel" src="src/icons.js"></script>
+<script type="text/babel" src="src/store.js"></script>
+<script type="text/babel" src="src/components.js"></script>
+<script type="text/babel" src="src/screen-capture.js"></script>
+<script type="text/babel" src="src/screen-list.js"></script>
+<script type="text/babel" src="src/screen-detail.js"></script>
+<script type="text/babel" src="src/screen-yan.js"></script>
+<script type="text/babel" src="src/screen-settings.js"></script>
+<script type="text/babel" src="src/screen-onboard.js"></script>
+<script type="text/babel" src="src/screen-search.js"></script>
+<script type="text/babel" src="src/screen-tags.js"></script>
+<script type="text/babel" src="src/app.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>

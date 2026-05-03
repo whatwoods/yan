@@ -1,0 +1,30 @@
+# Build output
+dist/
+build/
+.vite/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.history/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Reference material (handoff bundle from Claude Design — kept locally for reference, not version-tracked)
+design_extracted/

@@ -1,0 +1,401 @@
+// screen-yan.js — 砚: insights main + chat overlay (FAB).
+
+function YanScreen({ notes, persona }) {
+  const T = window.TOKENS, I = window.ICONS;
+  const { useState } = React;
+  const [chatOpen, setChatOpen] = useState(false);
+
+  return (
+    <div className="screen paper">
+      {/* Header */}
+      <div className="scr-head" style={{ paddingBottom: 12, borderBottom: `1px solid var(--fold)`, background: 'var(--paper-light)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <SealStamp size={36} text={persona.mark} color={persona.color} />
+          <div>
+            <BrushTitle size={24}>{persona.name}</BrushTitle>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>
+              已读你 {notes.length} 篇笔记 · {persona.desc}
+            </div>
+          </div>
+        </div>
+        <button className="icon-btn" aria-label="更多"><I.more size={20} /></button>
+      </div>
+
+      <YanInsightBody notes={notes} persona={persona} />
+
+      {/* FAB to open chat */}
+      {!chatOpen && (
+        <button onClick={() => setChatOpen(true)} aria-label="问砚"
+          style={{
+            position: 'absolute', right: 20, bottom: 22,
+            padding: '12px 20px 12px 16px',
+            borderRadius: 999,
+            background: persona.color, color: '#fff',
+            border: 'none', display: 'flex', alignItems: 'center', gap: 8,
+            cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(184,68,58,.38)',
+            fontFamily: T.fontBrush, fontSize: 15, letterSpacing: '.04em',
+          }}>
+          <I.chat size={18} />
+          <span>问{persona.name}</span>
+        </button>
+      )}
+
+      {/* Chat sheet */}
+      {chatOpen && (
+        <>
+          <div className="sheet-mask" onClick={() => setChatOpen(false)} />
+          <div className="sheet" style={{ height: '88%' }}>
+            <div className="sheet-grip" />
+            <div style={{
+              padding: '0 16px 10px',
+              borderBottom: `1px solid var(--fold)`,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <SealStamp size={28} text={persona.mark} color={persona.color} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: T.fontBrush, fontSize: 16, color: 'var(--ink)', lineHeight: 1.1 }}>
+                  问{persona.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-mute)' }}>
+                  翻你的记忆库 · {notes.length} 篇
+                </div>
+              </div>
+              <button className="icon-btn" onClick={() => setChatOpen(false)} aria-label="关闭">
+                <I.close size={20} />
+              </button>
+            </div>
+            <YanChatBody notes={notes} persona={persona} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function YanInsightBody({ notes, persona }) {
+  const T = window.TOKENS, I = window.ICONS;
+  const { useMemo } = React;
+
+  const stats = useMemo(() => computeStats(notes), [notes]);
+
+  return (
+    <div className="scroll" style={{ flex: 1, padding: '14px 16px 100px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
+          本月 · {stats.monthLabel}
+        </span>
+        <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>
+          {stats.monthCount} 条 · {stats.delta}
+        </span>
+      </div>
+
+      {/* Big seal-stamp summary */}
+      <div className="card" style={{ borderRadius: 16, padding: 16, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+          <SealStamp size={28} rotate={-5} text={persona.mark} color={persona.color} />
+          <div style={{
+            fontSize: 11, color: persona.color, fontWeight: 600,
+            letterSpacing: '.1em', paddingTop: 4,
+          }}>{persona.name} · 本月小结</div>
+        </div>
+        <div style={{
+          fontFamily: T.fontBrush, fontSize: 17, color: 'var(--ink)',
+          lineHeight: 1.7, marginBottom: 8,
+        }}>
+          你这个月写下 <span style={{ color: persona.color }}>{stats.monthCount}</span> 条。
+          {stats.topTag && <> 最常想的是 <mark>{stats.topTag}</mark>。</>}
+          {stats.topPerson && <> 最常提的人是 <mark style={{ background: 'var(--plum-tint)', color: 'var(--plum)' }}>{stats.topPerson}</mark>。</>}
+        </div>
+        <div style={{
+          fontSize: 12, color: 'var(--ink-mute)',
+          fontFamily: T.fontSerif, lineHeight: 1.6,
+        }}>
+          「{stats.peakHour}」是你思考最活跃的时段。
+        </div>
+      </div>
+
+      {/* Stats grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+        {[
+          [String(stats.total), '总条数', 'var(--ink)'],
+          [String(stats.tagCount), '已用标签', 'var(--bamboo)'],
+          [stats.totalDuration, '录音时长', 'var(--indigo)'],
+          [stats.delta, '比上月', 'var(--seal)'],
+        ].map(([n, l, c]) => (
+          <div key={l} className="card" style={{ borderRadius: 12, padding: 12 }}>
+            <div style={{
+              fontFamily: T.fontSerif, fontSize: 24,
+              color: c, fontWeight: 600, lineHeight: 1,
+            }}>{n}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 4 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Heatmap */}
+      <div className="card" style={{ borderRadius: 12, padding: 12, marginBottom: 12 }}>
+        <div style={{
+          fontSize: 11, color: 'var(--ink-mute)',
+          letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 8,
+        }}>记录节奏 · 近 4 周</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {stats.heatmap.map((v, i) => (
+            <div key={i} style={{
+              aspectRatio: '1', borderRadius: 3,
+              background: v === 0 ? 'var(--paper-deep)' : `rgba(184,68,58,${0.18 + Math.min(v / 4, 1) * 0.62})`,
+            }} title={`${v} 条`} />
+          ))}
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          marginTop: 6, fontSize: 10, color: 'var(--ink-fade)',
+        }} className="mono">
+          <span>4 周前</span><span>本周</span>
+        </div>
+      </div>
+
+      {/* Top tags */}
+      <div className="card" style={{ borderRadius: 12, padding: 12 }}>
+        <div style={{
+          fontSize: 11, color: 'var(--ink-mute)',
+          letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 10,
+        }}>常思之事</div>
+        {stats.topTags.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--ink-fade)', fontFamily: T.fontSerif, padding: '8px 0' }}>
+            还没有常思之事。
+          </div>
+        )}
+        {stats.topTags.map(({ label, count, color }) => {
+          const pct = stats.topTags[0].count ? count / stats.topTags[0].count : 0;
+          return (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <Tag label={label} color={color} size="sm" />
+              <div style={{
+                flex: 1, height: 4, background: 'var(--paper-deep)',
+                borderRadius: 2, overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${pct * 100}%`, height: '100%',
+                  background: `var(--${color})`,
+                  transition: 'width .4s',
+                }} />
+              </div>
+              <span className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)', width: 24, textAlign: 'right' }}>
+                {count}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function YanChatBody({ notes, persona }) {
+  const T = window.TOKENS, I = window.ICONS;
+  const { useState, useRef, useEffect } = React;
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      text: `你好，我是${persona.name}。我已经翻完你的 ${notes.length} 篇笔记，可以问我任何关于过往的事。`,
+      tags: [],
+    },
+  ]);
+  const [draft, setDraft] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, thinking]);
+
+  function send() {
+    const q = draft.trim();
+    if (!q || thinking) return;
+    setMessages((m) => [...m, { role: 'user', text: q }]);
+    setDraft('');
+    setThinking(true);
+    setTimeout(() => {
+      const r = window.askYan(q, notes);
+      setMessages((m) => [...m, { role: 'assistant', text: r.text, refs: r.refs }]);
+      setThinking(false);
+    }, 700 + Math.random() * 600);
+  }
+
+  return (
+    <>
+      <div ref={scrollRef} className="scroll" style={{
+        flex: 1, padding: '16px 16px 8px',
+        display: 'flex', flexDirection: 'column', gap: 14,
+      }}>
+        {messages.map((m, i) => m.role === 'user' ? (
+          <div key={i} style={{ alignSelf: 'flex-end', maxWidth: '80%' }}>
+            <div style={{
+              background: 'var(--ink)', color: 'var(--paper)',
+              padding: '10px 14px', borderRadius: '18px 18px 4px 18px',
+              fontFamily: T.fontSerif, fontSize: 14, lineHeight: 1.55,
+            }}>{m.text}</div>
+          </div>
+        ) : (
+          <div key={i} style={{ alignSelf: 'flex-start', maxWidth: '88%' }}>
+            <div style={{
+              background: 'var(--paper-light)', color: 'var(--ink-soft)',
+              border: `1px solid var(--fold)`,
+              padding: '12px 14px', borderRadius: '18px 18px 18px 4px',
+              fontFamily: T.fontSerif, fontSize: 14, lineHeight: 1.65,
+            }}>{m.text}</div>
+            {m.refs?.length > 0 && (
+              <div style={{ marginTop: 6, paddingLeft: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {m.refs.map((r) => (
+                  <div key={r.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontSize: 12, color: 'var(--ink-mute)',
+                    fontFamily: T.fontSerif,
+                  }}>
+                    <span className="mono" style={{ fontSize: 10, color: 'var(--ink-fade)', width: 40 }}>
+                      {r.when}
+                    </span>
+                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {r.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {thinking && (
+          <div style={{ alignSelf: 'flex-start' }}>
+            <div style={{
+              background: 'var(--paper-light)', border: `1px solid var(--fold)`,
+              padding: '10px 14px', borderRadius: '18px 18px 18px 4px',
+              display: 'flex', gap: 4, alignItems: 'center',
+            }}>
+              {[0, 1, 2].map((i) => (
+                <span key={i} style={{
+                  width: 6, height: 6, borderRadius: '50%', background: persona.color,
+                  animation: `pulse 1s ${i * 0.15}s infinite`, opacity: .7,
+                }} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div style={{
+        padding: '8px 12px 12px',
+        borderTop: `1px solid var(--fold)`, background: 'var(--paper-light)',
+      }}>
+        <div style={{
+          background: 'var(--paper)', border: `1px solid var(--fold)`,
+          borderRadius: 22, padding: '6px 8px',
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && send()}
+            placeholder={`问${persona.name}一下…`}
+            style={{
+              flex: 1, border: 'none', background: 'transparent',
+              fontFamily: T.fontSerif, fontSize: 14, color: 'var(--ink)',
+              outline: 'none', padding: '8px 10px',
+            }} />
+          <button onClick={send} disabled={!draft.trim() || thinking}
+            style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: draft.trim() ? persona.color : 'var(--ink-fade)', color: '#fff',
+              border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: draft.trim() ? 'pointer' : 'default',
+              transition: 'background .15s',
+            }}>
+            <I.send size={16} />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function computeStats(notes) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+
+  const monthNotes = notes.filter((n) => n.createdAt >= monthStart);
+  const lastMonthNotes = notes.filter((n) => n.createdAt >= lastMonthStart && n.createdAt < monthStart);
+
+  // Tag counts
+  const tagCounts = {};
+  monthNotes.forEach((n) => (n.tags || []).forEach((t) => {
+    if (!tagCounts[t.label]) tagCounts[t.label] = { count: 0, color: t.color };
+    tagCounts[t.label].count++;
+  }));
+  const topTags = Object.entries(tagCounts)
+    .map(([label, v]) => ({ label, count: v.count, color: v.color }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // People
+  const peopleCounts = {};
+  monthNotes.forEach((n) => (n.people || []).forEach((p) => {
+    peopleCounts[p] = (peopleCounts[p] || 0) + 1;
+  }));
+  const topPerson = Object.entries(peopleCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+  // Peak hour
+  const hourBuckets = Array(4).fill(0); // 0-6, 6-12, 12-18, 18-24
+  monthNotes.forEach((n) => {
+    const h = new Date(n.createdAt).getHours();
+    hourBuckets[Math.floor(h / 6)]++;
+  });
+  const peakIdx = hourBuckets.indexOf(Math.max(...hourBuckets));
+  const peakHour = ['深夜', '清晨', '午间', '晚饭后'][peakIdx];
+
+  // Heatmap — 4 weeks × 7 days = 28 cells
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const heat = Array(28).fill(0);
+  notes.forEach((n) => {
+    const d = new Date(n.createdAt); d.setHours(0, 0, 0, 0);
+    const diff = Math.floor((today - d) / 86_400_000);
+    if (diff >= 0 && diff < 28) heat[27 - diff]++;
+  });
+
+  // Voice duration
+  let totalSec = 0;
+  monthNotes.forEach((n) => {
+    if (n.duration) {
+      const [m, s] = n.duration.split(':').map(Number);
+      totalSec += (m || 0) * 60 + (s || 0);
+    }
+  });
+  const totalDuration = totalSec
+    ? `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
+    : '—';
+
+  // Delta
+  let delta = '—';
+  if (lastMonthNotes.length === 0) {
+    delta = monthNotes.length > 0 ? '新月' : '—';
+  } else {
+    const pct = Math.round((monthNotes.length - lastMonthNotes.length) / lastMonthNotes.length * 100);
+    delta = (pct >= 0 ? '+' : '') + pct + '%';
+  }
+
+  return {
+    monthLabel: `${now.getMonth() + 1}月`,
+    monthCount: monthNotes.length,
+    total: notes.length,
+    tagCount: Object.keys(tagCounts).length,
+    totalDuration,
+    delta,
+    topTag: topTags[0]?.label || null,
+    topPerson,
+    peakHour,
+    heatmap: heat,
+    topTags,
+  };
+}
+
+window.YanScreen = YanScreen;
