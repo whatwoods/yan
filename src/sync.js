@@ -2,9 +2,108 @@
 // Push/pull notes as Markdown with YAML frontmatter.
 // Spec §6.2: /biji/notes/, /biji/categories.json, /biji/insights/, /biji/preferences.md, /biji/trash/
 
-import { createClient } from 'webdav';
 import { serialize, deserialize, getNotePath } from './note-format.js';
 import { putNote, getMeta, setMeta, getSyncQueue, clearSyncQueue } from './db.js';
+
+// ── Lightweight WebDAV client (fetch-based, no Node polyfills) ──
+
+class WebDAVClient {
+  constructor(server, { username, password }) {
+    this.server = server.replace(/\/+$/, '');
+    this.auth = 'Basic ' + btoa(username + ':' + password);
+  }
+
+  async _request(method, path, { body, headers: extraHeaders, expectXml } = {}) {
+    const headers = { Authorization: this.auth, ...extraHeaders };
+    if (body !== undefined) {
+      headers['Content-Type'] = 'text/plain; charset=utf-8';
+    }
+    const resp = await fetch(this.server + encodeURI(path), { method, headers, body });
+    if (!resp.ok) {
+      throw new Error(`WebDAV ${method} ${path} failed: ${resp.status} ${resp.statusText}`);
+    }
+    return resp;
+  }
+
+  async getDirectoryContents(path) {
+    const body = `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:allprop/>
+</D:propfind>`;
+    const resp = await this._request('PROPFIND', path, {
+      body,
+      headers: { Depth: '1' },
+      expectXml: true,
+    });
+    const text = await resp.text();
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    // Use localName queries to handle DAV namespace prefixes (d:response, D:response, etc.)
+    const responses = [...doc.querySelectorAll('*')].filter(el => el.localName === 'response');
+    const results = [];
+    for (const item of responses) {
+      const hrefEl = [...item.querySelectorAll('*')].find(el => el.localName === 'href');
+      if (!hrefEl) continue;
+      const href = decodeURIComponent(hrefEl.textContent.trim());
+      // Skip the directory itself
+      if (href === path || href === path + '/') continue;
+      const isCollection = [...item.querySelectorAll('*')].some(
+        el => el.localName === 'collection'
+      );
+      const sizeEl = [...item.querySelectorAll('*')].find(
+        el => el.localName === 'getcontentlength'
+      );
+      const size = sizeEl ? parseInt(sizeEl.textContent, 10) || 0 : 0;
+      // Extract basename from href
+      const trimmed = href.endsWith('/') ? href.slice(0, -1) : href;
+      const basename = trimmed.substring(trimmed.lastIndexOf('/') + 1);
+      results.push({
+        filename: href,
+        basename,
+        type: isCollection ? 'directory' : 'file',
+        size,
+      });
+    }
+    return results;
+  }
+
+  async getFileContents(path, { format } = {}) {
+    const resp = await this._request('GET', path);
+    return format === 'text' ? resp.text() : resp.arrayBuffer();
+  }
+
+  async putFileContents(path, content, { overwrite } = {}) {
+    const headers = {};
+    if (!overwrite) headers['If-None-Match'] = '*';
+    await this._request('PUT', path, { body: content, headers });
+  }
+
+  async createDirectory(path, { recursive } = {}) {
+    if (recursive) {
+      const parts = path.split('/').filter(Boolean);
+      let current = '';
+      for (const part of parts) {
+        current += '/' + part;
+        try {
+          await this._mkcol(current);
+        } catch {}
+      }
+    } else {
+      await this._mkcol(path);
+    }
+  }
+
+  async _mkcol(path) {
+    const resp = await fetch(this.server + encodeURI(path), { method: 'MKCOL', headers: { Authorization: this.auth } });
+    // 405 = already exists, that's fine
+    if (!resp.ok && resp.status !== 405) {
+      throw new Error(`WebDAV MKCOL ${path} failed: ${resp.status} ${resp.statusText}`);
+    }
+  }
+}
+
+function createClient(server, opts) {
+  return new WebDAVClient(server, opts);
+}
 
 let client = null;
 
