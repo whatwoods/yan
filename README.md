@@ -9,7 +9,7 @@
 - **笔记本视图**：按时间线浏览，支持置顶、分类筛选、标签筛选、全文搜索、详情编辑、Markdown 渲染和软删除回收站。
 - **问砚与洞察**：砚页提供本月统计、热力图、常用标签、AI 月度洞察、问砚 RAG 问答和洞察长图导出。
 - **Tag Curator**：AI 定期分析标签统计和共现关系，给出合并、重命名、归档、新增等整理建议。
-- **WebDAV 同步**：通过浏览器 `fetch` 直接访问 WebDAV，双向同步笔记、分类、洞察、偏好和回收站，并把冲突副本写入 `/yan/conflicts/`。
+- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，双向同步笔记、分类、洞察、偏好和回收站，并把冲突副本写入 `/yan/conflicts/`。
 - **隐私优先**：应用没有自带后端；笔记默认只在本机 IndexedDB，AI 请求只发往你配置的供应商，敏感 Key 可用主密码加密。
 - **离线可用**：Service Worker 缓存应用壳和构建产物，支持 PWA 安装和离线读写。
 
@@ -48,7 +48,7 @@ node --test tests/*.test.mjs
 - Node.js 18+。
 - 现代浏览器，需支持 IndexedDB、Web Crypto、Service Worker、MediaRecorder 或 Web Speech API。
 - PWA、麦克风、摄像头和 Service Worker 在生产环境需要 HTTPS；`localhost` 开发环境除外。
-- AI 供应商和 WebDAV 服务需要允许浏览器跨域访问，否则前端直连会被 CORS 拦截。
+- AI 供应商需要允许浏览器跨域访问；WebDAV 在本地开发和 `vite preview` 下走内置同源代理，生产部署需要提供同等的 `/dav/<encoded-server>/...` 反向代理，或使用本身允许浏览器跨域访问的 WebDAV 服务。
 
 ## 配置项
 
@@ -71,7 +71,7 @@ node --test tests/*.test.mjs
 
 ### WebDAV
 
-WebDAV 配置包含服务器地址、用户名和密码。同步路径约定如下：
+WebDAV 配置包含服务器地址、用户名和密码。开发环境会把浏览器请求从同源 `/dav/<encoded-server>/...` 转发到真实服务器，避免坚果云这类服务缺少 CORS 响应头导致 `PROPFIND` 预检失败。同步路径约定如下：
 
 ```text
 /yan/notes/<year>/<month>/<id>.md     # 正常笔记
@@ -131,7 +131,7 @@ ai:
 | 长图导出 | `html2canvas` |
 | 加密 | Web Crypto API（PBKDF2 + AES-GCM） |
 | AI 协议 | OpenAI 兼容 `/v1/chat/completions` |
-| 同步 | 浏览器 fetch 实现的轻量 WebDAV client |
+| 同步 | 浏览器 fetch + 同源 WebDAV 代理 |
 | PWA | Web App Manifest + Service Worker |
 
 ## 目录结构
@@ -178,9 +178,10 @@ ai:
 注意事项：
 
 - 生产环境需要 HTTPS。
-- `vite.config.js` 使用 `base: './'`，适合部署到子路径。
+- `vite.config.js` 使用 `base: './'`，适合部署到子路径；本地开发和 `vite preview` 还会挂载 WebDAV 同源代理。
 - `index.html` 的 CSP 允许 `connect-src 'self' https:`，AI 和 WebDAV endpoint 需要使用 HTTPS。
 - 静态托管必须能正确提供 `manifest.webmanifest`、`sw.js` 和 `assets/*`。
+- 纯静态托管无法替第三方 WebDAV 补 CORS。生产环境若要支持坚果云等服务，需要在同一域名下配置 `/dav/<encoded-server>/...` 反向代理。
 
 ## 许可
 

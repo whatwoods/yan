@@ -1,5 +1,5 @@
 // 笔记 · service worker — Vite-aware offline caching.
-const CACHE = 'yan-v5';
+const CACHE = 'yan-v6';
 const PRECACHE = [
   './',
   'index.html',
@@ -47,6 +47,11 @@ self.addEventListener('fetch', (e) => {
         }).catch(() => caches.match(e.request))
       );
     }
+    return;
+  }
+
+  // WebDAV sync traffic must go straight to the dev/preview/prod proxy.
+  if (url.pathname.startsWith('/dav/')) {
     return;
   }
 

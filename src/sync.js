@@ -8,9 +8,10 @@ import { putNote, getMeta, setMeta, getSyncQueue, clearSyncQueue, enqueueSync } 
 // ── Lightweight WebDAV client (fetch-based, no Node polyfills) ──
 
 class WebDAVClient {
-  constructor(server, { username, password }) {
+  constructor(server, { username, password, proxyBase }) {
     this.server = server.replace(/\/+$/, '');
     this.auth = 'Basic ' + btoa(unescape(encodeURIComponent(username + ':' + password)));
+    this.proxyBase = proxyBase || '';
     this._createdDirs = new Set();
   }
 
@@ -19,7 +20,8 @@ class WebDAVClient {
     if (body !== undefined && !headers['Content-Type']) {
       headers['Content-Type'] = 'text/plain; charset=utf-8';
     }
-    const resp = await fetch(this.server + encodeURI(path), { method, headers, body });
+    const baseUrl = this.proxyBase || this.server;
+    const resp = await fetch(baseUrl + encodeURI(path), { method, headers, body });
     if (!resp.ok) {
       throw new Error(`WebDAV ${method} ${path} failed: ${resp.status} ${resp.statusText}`);
     }
@@ -86,7 +88,8 @@ class WebDAVClient {
   }
 
   async deleteFile(path) {
-    const resp = await fetch(this.server + encodeURI(path), {
+    const baseUrl = this.proxyBase || this.server;
+    const resp = await fetch(baseUrl + encodeURI(path), {
       method: 'DELETE',
       headers: { Authorization: this.auth },
     });
@@ -116,7 +119,8 @@ class WebDAVClient {
   }
 
   async _mkcol(path) {
-    const resp = await fetch(this.server + encodeURI(path), { method: 'MKCOL', headers: { Authorization: this.auth } });
+    const baseUrl = this.proxyBase || this.server;
+    const resp = await fetch(baseUrl + encodeURI(path), { method: 'MKCOL', headers: { Authorization: this.auth } });
     // 405 = already exists, that's fine
     if (!resp.ok && resp.status !== 405) {
       throw new Error(`WebDAV MKCOL ${path} failed: ${resp.status} ${resp.statusText}`);
@@ -125,7 +129,10 @@ class WebDAVClient {
 }
 
 function createClient(server, opts) {
-  return new WebDAVClient(server, opts);
+  // Build proxy base: /dav/<encoded-server> for same-origin forwarding (avoids CORS)
+  // Works in dev (Vite middleware) and production (any reverse proxy that handles /dav/*)
+  const proxyBase = '/dav/' + encodeURIComponent(server.replace(/\/+$/, ''));
+  return new WebDAVClient(server, { ...opts, proxyBase });
 }
 
 let client = null;
