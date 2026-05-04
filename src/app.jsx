@@ -204,13 +204,20 @@ export function App() {
   // ── Derived state (must be before any early returns) ──────
   const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
 
-  // Compute prev/next note indices for swipe navigation
-  const { onPrev, onNext } = useMemo(() => {
-    if (!openNoteId || !notes.length) return { onPrev: null, onNext: null };
+  // Compute prev/next notes (and their navigation callbacks) for swipe navigation.
+  // Pass full note objects so the detail screen can show title peeks during drag.
+  const { onPrev, onNext, prevNote, nextNote } = useMemo(() => {
+    if (!openNoteId || !notes.length) {
+      return { onPrev: null, onNext: null, prevNote: null, nextNote: null };
+    }
     const idx = notes.findIndex(n => n.id === openNoteId);
+    const prev = idx > 0 ? notes[idx - 1] : null;
+    const next = idx < notes.length - 1 ? notes[idx + 1] : null;
     return {
-      onPrev: idx > 0 ? () => setOpenNoteId(notes[idx - 1].id) : null,
-      onNext: idx < notes.length - 1 ? () => setOpenNoteId(notes[idx + 1].id) : null,
+      onPrev: prev ? () => setOpenNoteId(prev.id) : null,
+      onNext: next ? () => setOpenNoteId(next.id) : null,
+      prevNote: prev,
+      nextNote: next,
     };
   }, [notes, openNoteId]);
 
@@ -274,6 +281,8 @@ export function App() {
               onDelete={deleteNote}
               onPrev={onPrev}
               onNext={onNext}
+              prevNote={prevNote}
+              nextNote={nextNote}
             />
           )}
           {route === 'yan' && (

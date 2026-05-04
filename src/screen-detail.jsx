@@ -9,7 +9,7 @@ import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from '
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 import { useHorizontalSwipe } from './gestures.js';
 
-export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext }) {
+export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext, prevNote, nextNote }) {
   const T = TOKENS, I = ICONS;
   const persona = PERSONAS.yan;
 
@@ -19,7 +19,10 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [categories, setCategories] = useState([]);
   const [isFullEditor, setFullEditor] = useState(false);
+  const [showFirstHint, setShowFirstHint] = useState(false);
+  const stageRef = useRef(null);
   const screenRef = useRef(null);
+  const firstHintShownRef = useRef(false);
   const handleAutoNumber = useAutoNumber(body, setBody);
 
   useHorizontalSwipe(screenRef, {
@@ -27,11 +30,40 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
     onNext,
     enabled: !editing && !isFullEditor && !showCatPicker,
     threshold: 0.3,
+    // Drive page-edge peek opacity via CSS variables on the stage container,
+    // avoiding React re-renders on every drag frame.
+    onProgress: (dx, dir) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const w = window.innerWidth;
+      const peek = Math.min(1, Math.abs(dx) / (w * 0.4));
+      stage.style.setProperty('--peek-next', dir === 'next' ? String(peek) : '0');
+      stage.style.setProperty('--peek-prev', dir === 'prev' ? String(peek) : '0');
+    },
   });
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
   }, []);
+
+  // Reset scroll position when navigating between notes via swipe.
+  useEffect(() => {
+    if (screenRef.current) screenRef.current.scrollTop = 0;
+  }, [note.id]);
+
+  // First-time swipe hint — shows once per browser, only if there's somewhere to flip to.
+  useEffect(() => {
+    if (firstHintShownRef.current) return;
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('hint-detail-swipe')) return;
+    if (!prevNote && !nextNote) return;
+    firstHintShownRef.current = true;
+    setShowFirstHint(true);
+    const t = setTimeout(() => {
+      setShowFirstHint(false);
+      try { localStorage.setItem('hint-detail-swipe', '1'); } catch {}
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [prevNote, nextNote]);
 
   if (!note) return null;
 
@@ -66,7 +98,19 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
   }
 
   return (
-    <div className="screen paper" style={{ touchAction: 'pan-y' }}>
+    <div ref={stageRef} className="screen paper page-stage" style={{ touchAction: 'pan-y' }}>
+      {/* Page-edge peeks — show prev/next note titles during swipe */}
+      {prevNote && (
+        <div className="page-peek prev" aria-hidden="true">
+          上一条 · {prevNote.title}
+        </div>
+      )}
+      {nextNote && (
+        <div className="page-peek next" aria-hidden="true">
+          下一条 · {nextNote.title}
+        </div>
+      )}
+
       {/* Top bar */}
       <div
         className="detail-head"
@@ -103,7 +147,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
 
       <div
         ref={screenRef}
-        className="scroll"
+        className="scroll page-leaf"
         aria-hidden={isFullEditor ? 'true' : undefined}
         style={{ flex: 1, padding: '4px 24px 24px' }}
       >
@@ -289,6 +333,12 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
       )}
 
       {/* Category picker sheet */}
+      {showFirstHint && (
+        <div className="first-hint" aria-hidden="true">
+          {prevNote ? '←' : ''} 翻页 {nextNote ? '→' : ''}
+        </div>
+      )}
+
       {showCatPicker && (
         <>
           <div className="sheet-mask" onClick={() => setShowCatPicker(false)} />

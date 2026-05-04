@@ -187,19 +187,42 @@ export function useLongPress(ref, onLongPress, { delay = 500, moveTolerance = 10
 }
 
 /**
- * useHorizontalSwipe — full-screen horizontal swipe for page navigation.
+ * useHorizontalSwipe — full-screen horizontal swipe for page navigation,
+ * rendered as a book-style page flip. The element hinges around its leading
+ * edge (left edge for swipe-left/next, right edge for swipe-right/prev),
+ * tilts via rotateY during drag, and on commit folds to ±95° (edge-on),
+ * swaps content, and unfolds from the opposite ±95°.
+ *
  * Direction lock: |dx|>12 && |dx|>|dy|*1.5 enters horizontal mode.
- * Calls onPrev/onNext when threshold crossed, otherwise rebounds.
- * Boundary rubber-banding when no prev/next available.
+ * onProgress(dx, direction) fires every drag frame and on phase clears.
  */
-export function useHorizontalSwipe(ref, { onPrev, onNext, enabled = true, threshold = 0.3 }) {
+export function useHorizontalSwipe(ref, { onPrev, onNext, onProgress, enabled = true, threshold = 0.3 }) {
   const state = useRef({ startX: 0, startY: 0, dx: 0, locked: null, swiping: false, raf: 0, startTime: 0 });
-  const callbacks = useRef({ onPrev, onNext });
-  callbacks.current = { onPrev, onNext };
+  const callbacks = useRef({ onPrev, onNext, onProgress });
+  callbacks.current = { onPrev, onNext, onProgress };
 
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
+
+    function applyDragTransform(dx) {
+      const screenW = window.innerWidth;
+      const progress = Math.max(-1, Math.min(1, dx / screenW));
+      // Damped tilt — finger moves dx but rotation only goes to ±22°
+      const rotY = Math.max(-22, Math.min(22, progress * 32));
+      const sc = 1 - 0.04 * Math.abs(progress);
+      // Hinge at the leading edge (the side the page is "lifting" from)
+      const origin = dx < 0 ? '0% 50%' : '100% 50%';
+      el.style.transformOrigin = origin;
+      el.style.transform = `translateX(${dx}px) rotateY(${rotY}deg) scale(${sc})`;
+    }
+
+    function clearTransform() {
+      el.style.transition = '';
+      el.style.transform = '';
+      el.style.transformOrigin = '';
+      el.style.opacity = '';
+    }
 
     function onTouchStart(e) {
       const t = e.touches[0];
@@ -218,7 +241,6 @@ export function useHorizontalSwipe(ref, { onPrev, onNext, enabled = true, thresh
       const rawDx = t.clientX - s.startX;
       const dy = t.clientY - s.startY;
 
-      // Direction lock — stricter: |dx| > 12 && |dx| > 1.5 * |dy|
       if (s.locked === null) {
         if (Math.abs(rawDx) < 12) return;
         if (Math.abs(rawDx) > Math.abs(dy) * 1.5) {
@@ -241,10 +263,45 @@ export function useHorizontalSwipe(ref, { onPrev, onNext, enabled = true, thresh
       if (s.raf) cancelAnimationFrame(s.raf);
       s.raf = requestAnimationFrame(() => {
         el.style.transition = 'none';
-        el.style.transform = `translateX(${dx}px)`;
+        applyDragTransform(dx);
+        callbacks.current.onProgress?.(dx, dx < 0 ? 'next' : 'prev');
       });
 
       e.preventDefault();
+    }
+
+    function foldFlip(direction) {
+      // direction: 'next' (left hinge, fold to -95°) or 'prev' (right hinge, +95°)
+      const outOrigin = direction === 'next' ? '0% 50%' : '100% 50%';
+      const inOrigin = direction === 'next' ? '100% 50%' : '0% 50%';
+      const outRot = direction === 'next' ? -95 : 95;
+      const inRot = direction === 'next' ? 95 : -95;
+      const trigger = direction === 'next' ? callbacks.current.onNext : callbacks.current.onPrev;
+
+      // Phase 1: fold out (page rotates to edge-on)
+      el.style.transition = 'transform .2s cubic-bezier(.4,.05,.7,.4), opacity .16s linear';
+      el.style.transformOrigin = outOrigin;
+      el.style.transform = `translateX(0) rotateY(${outRot}deg) scale(.94)`;
+      el.style.opacity = '0';
+      callbacks.current.onProgress?.(0, null);
+
+      setTimeout(() => {
+        // Swap content
+        trigger?.();
+        // Phase 2: jump to opposite hinge, edge-on, invisible
+        el.style.transition = 'none';
+        el.style.transformOrigin = inOrigin;
+        el.style.transform = `translateX(0) rotateY(${inRot}deg) scale(.94)`;
+        el.style.opacity = '0';
+
+        requestAnimationFrame(() => {
+          // Phase 3: unfold to face-on
+          el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1), opacity .18s linear';
+          el.style.transform = 'translateX(0) rotateY(0deg) scale(1)';
+          el.style.opacity = '1';
+          setTimeout(clearTransform, 240);
+        });
+      }, 200);
     }
 
     function onTouchEnd() {
@@ -271,36 +328,14 @@ export function useHorizontalSwipe(ref, { onPrev, onNext, enabled = true, thresh
       s.swiping = false;
       s.locked = null;
 
-      if (trigger === 'next') {
-        // Slide out to left, switch content, slide in from right
-        el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
-        el.style.transform = `translateX(${-screenW}px)`;
-        setTimeout(() => {
-          el.style.transition = 'none';
-          el.style.transform = `translateX(${screenW}px)`;
-          callbacks.current.onNext?.();
-          requestAnimationFrame(() => {
-            el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
-            el.style.transform = 'translateX(0)';
-          });
-        }, 220);
-      } else if (trigger === 'prev') {
-        // Slide out to right, switch content, slide in from left
-        el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
-        el.style.transform = `translateX(${screenW}px)`;
-        setTimeout(() => {
-          el.style.transition = 'none';
-          el.style.transform = `translateX(${-screenW}px)`;
-          callbacks.current.onPrev?.();
-          requestAnimationFrame(() => {
-            el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
-            el.style.transform = 'translateX(0)';
-          });
-        }, 220);
+      if (trigger === 'next' || trigger === 'prev') {
+        foldFlip(trigger);
       } else {
-        // Rebound
-        el.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1)';
-        el.style.transform = 'translateX(0)';
+        // Rebound — settle back to identity
+        el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
+        el.style.transform = 'translateX(0) rotateY(0deg) scale(1)';
+        callbacks.current.onProgress?.(0, null);
+        setTimeout(clearTransform, 220);
       }
     }
 

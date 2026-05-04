@@ -605,6 +605,74 @@ mark {
 .swipe-card { touch-action: pan-y; }
 .swipe-card:active { transform: scale(.99); }
 
+/* Detail page-flip stage — provides the 3D perspective for the rotating page */
+.page-stage {
+  perspective: 1400px;
+  perspective-origin: 50% 40%;
+}
+.page-leaf {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+/* Page-edge peek labels — visible during swipe, opacity driven by --peek-* vars */
+.page-peek {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: .12em;
+  color: var(--ink-fade);
+  background: linear-gradient(to right, transparent, var(--paper-deep) 60%);
+  padding: 18px 4px 18px 14px;
+  max-height: 64vh;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity .12s linear;
+  white-space: nowrap;
+}
+.page-peek.prev {
+  left: 0;
+  background: linear-gradient(to left, transparent, var(--paper-deep) 60%);
+  padding: 18px 14px 18px 4px;
+  opacity: var(--peek-prev, 0);
+}
+.page-peek.next {
+  right: 0;
+  opacity: var(--peek-next, 0);
+}
+
+/* First-time swipe hint — shows once at bottom */
+.first-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(28px + var(--safe-bottom));
+  transform: translateX(-50%);
+  font-family: var(--font-serif);
+  font-size: 12px;
+  letter-spacing: .25em;
+  color: var(--ink-soft);
+  background: var(--paper-light);
+  border: 1px solid var(--fold);
+  border-radius: 999px;
+  padding: 7px 16px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  z-index: 5;
+  animation: hint-fade 3s ease forwards;
+}
+@keyframes hint-fade {
+  0%   { opacity: 0; transform: translate(-50%, 8px); }
+  10%  { opacity: 1; transform: translate(-50%, 0); }
+  85%  { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+
 /* Swipe action buttons */
 .swipe-btn {
   flex: 1; display: flex; flex-direction: column;
