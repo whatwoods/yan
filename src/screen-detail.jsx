@@ -1,14 +1,15 @@
 // screen-detail.jsx — Single note detail with AI summary & tags.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { TOKENS, PERSONAS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
+import { useHorizontalSwipe } from './gestures.js';
 
-export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete }) {
+export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext }) {
   const T = TOKENS, I = ICONS;
   const persona = PERSONAS.yan;
 
@@ -18,7 +19,15 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete }) {
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [categories, setCategories] = useState([]);
   const [isFullEditor, setFullEditor] = useState(false);
+  const screenRef = useRef(null);
   const handleAutoNumber = useAutoNumber(body, setBody);
+
+  useHorizontalSwipe(screenRef, {
+    onPrev,
+    onNext,
+    enabled: !editing && !isFullEditor && !showCatPicker,
+    threshold: 0.3,
+  });
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
@@ -57,7 +66,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete }) {
   }
 
   return (
-    <div className="screen paper">
+    <div ref={screenRef} className="screen paper">
       {/* Top bar */}
       <div
         className="detail-head"

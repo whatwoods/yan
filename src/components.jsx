@@ -164,6 +164,41 @@ export function ScrHead({ title, right, brushSize = 26, sub }) {
   );
 }
 
+// ActionSheet — bottom slide-up menu triggered by long press
+export function ActionSheet({ items, onClose }) {
+  return (
+    <>
+      <div className="sheet-mask" onClick={onClose} />
+      <div className="action-sheet" role="dialog" aria-modal="true" aria-label="操作菜单">
+        <div className="sheet-grip" />
+        <div style={{ padding: '4px 16px 20px' }}>
+          {items.map((item, i) => (
+            <button key={i} onClick={() => { item.onSelect?.(); onClose(); }} style={{
+              background: 'transparent', border: 'none',
+              padding: '14px 12px', borderRadius: 12,
+              fontFamily: 'var(--font-serif)', fontSize: 15,
+              color: item.danger ? 'var(--seal)' : 'var(--ink)',
+              display: 'flex', alignItems: 'center', gap: 12,
+              cursor: 'pointer', textAlign: 'left', width: '100%',
+            }}>
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+          <div style={{ height: 8 }} />
+          <button onClick={onClose} style={{
+            background: 'var(--paper-deep)', border: 'none',
+            padding: '14px 12px', borderRadius: 12,
+            fontFamily: 'var(--font-serif)', fontSize: 15,
+            color: 'var(--ink-mute)',
+            cursor: 'pointer', textAlign: 'center', width: '100%',
+          }}>取消</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── useAutoNumber — auto-continue numbered lists on Enter ─────
 const NUMBER_RE = /^(\d+)\.\s/;
 

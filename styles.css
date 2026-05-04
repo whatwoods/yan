@@ -600,6 +600,24 @@ mark {
   font-weight: 600;
 }
 
+/* ActionSheet — bottom slide-up, reuses sheet design language */
+.action-sheet {
+  position: fixed; left: var(--safe-left); right: var(--safe-right); bottom: 0;
+  background: var(--paper-light);
+  border-top-left-radius: 22px; border-top-right-radius: 22px;
+  box-shadow: var(--shadow-deep);
+  max-height: 50vh;
+  display: flex; flex-direction: column;
+  z-index: 51;
+  padding-bottom: var(--safe-bottom);
+  animation: slide-up .26s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* Swipe card container */
+.swipe-row { touch-action: pan-y; }
+.swipe-card { touch-action: pan-y; }
+.screen.paper { touch-action: pan-y; }
+
 /* Left border color bar on note cards */
 .category-bar {
   position: absolute;

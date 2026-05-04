@@ -3,10 +3,11 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { TOKENS, dayLabel, timeLabel } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, KindBadge, ScrHead, showToast } from './components.jsx';
+import { SealStamp, Tag, KindBadge, ScrHead, showToast, ActionSheet } from './components.jsx';
 import { Store } from './store.jsx';
 import { getMeta, setMeta } from './db.js';
 import { initWebDAV, syncAll } from './sync.js';
+import { useSwipeActions, useLongPress } from './gestures.js';
 
 // ── Simple virtual list for 100+ notes ────────────────────────
 const VIRTUAL_THRESHOLD = 100;
@@ -53,7 +54,7 @@ function useVirtualList(flatItems, containerRef, itemHeight, disabled) {
   return disabled ? null : range;
 }
 
-function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityChange, onCompose, onTags, onCategories, initialFilter }) {
+function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityChange, onCompose, onTags, onCategories, initialFilter, onUpdate, onDelete }) {
   const T = TOKENS, I = ICONS;
 
   const [filter, setFilter] = useState(initialFilter || '全部');
@@ -63,8 +64,19 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
   const [syncStatus, setSyncStatus] = useState('synced');
   const [syncing, setSyncing] = useState(false);
   const [conflictCount, setConflictCount] = useState(0);
+  const [openSwipeId, setOpenSwipeId] = useState(null);
+  const [actionSheet, setActionSheet] = useState(null);
   const scrollRef = useRef(null);
   const pullRef = useRef({ startY: 0, pulling: false });
+
+  // Close any open swipe when scrolling
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => { if (openSwipeId) setOpenSwipeId(null); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [openSwipeId]);
 
   useEffect(() => { setFilter(initialFilter || '全部'); }, [initialFilter]);
 
@@ -417,7 +429,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
               }
               return (
                 <div key={item.note.id} style={{ position: 'absolute', top, left: 0, right: 0, height: itemH, paddingTop: item.type === 'header' ? 0 : 2, paddingBottom: 2 }}>
-                  <NoteCard note={item.note} pad={item.pad} catColor={catMap.get(item.note.category)} onOpen={() => onOpenNote(item.note.id)} virtualMode />
+                  <NoteCard note={item.note} pad={item.pad} catColor={catMap.get(item.note.category)} onOpen={() => onOpenNote(item.note.id)} virtualMode openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={(n) => setActionSheet({ noteId: n.id, noteTitle: n.title, pinned: n.pinned })} />
                 </div>
               );
             })}
@@ -436,7 +448,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                   <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} />)}
+                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={(n) => setActionSheet({ noteId: n.id, noteTitle: n.title, pinned: n.pinned })} />)}
                 </div>
               </div>
             )}
@@ -454,7 +466,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{remain.length} 条</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} />)}
+                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={(n) => setActionSheet({ noteId: n.id, noteTitle: n.title, pinned: n.pinned })} />)}
                   </div>
                 </div>
               );
@@ -462,6 +474,45 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
           </>
         )}
       </div>
+
+      {/* ActionSheet */}
+      {actionSheet && (
+        <ActionSheet
+          items={[
+            {
+              icon: <ICONS.pin size={18} fill={actionSheet.pinned ? 'currentColor' : 'none'} />,
+              label: actionSheet.pinned ? '取消钉住' : '钉住',
+              onSelect: () => onUpdate?.(actionSheet.noteId, { pinned: !actionSheet.pinned }),
+            },
+            {
+              icon: <ICONS.pen size={18} />,
+              label: '复制正文',
+              onSelect: async () => {
+                const note = notes.find(n => n.id === actionSheet.noteId);
+                if (note?.body) {
+                  try { await navigator.clipboard.writeText(note.body); showToast('已复制'); }
+                  catch { showToast('复制失败'); }
+                }
+              },
+            },
+            ...(navigator.share ? [{
+              icon: <ICONS.globe size={18} />,
+              label: '分享',
+              onSelect: () => {
+                const note = notes.find(n => n.id === actionSheet.noteId);
+                if (note) navigator.share({ title: note.title, text: note.body }).catch(() => {});
+              },
+            }] : []),
+            {
+              icon: <ICONS.trash size={18} />,
+              label: '删除',
+              danger: true,
+              onSelect: () => onDelete?.(actionSheet.noteId),
+            },
+          ]}
+          onClose={() => setActionSheet(null)}
+        />
+      )}
 
       {/* FAB */}
       <button onClick={onCompose} aria-label="新建笔记"
@@ -479,54 +530,106 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
   );
 }
 
-const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, virtualMode }) {
+const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, virtualMode, openSwipeId, onSwipeChange, onUpdate, onDelete, onLongPress }) {
   const T = TOKENS;
+  const cardRef = useRef(null);
+  const isOpen = openSwipeId === note.id;
+
+  const { reset, isSwiping } = useSwipeActions(cardRef, {
+    onDelete: () => onDelete?.(note.id),
+    onPin: () => onUpdate?.(note.id, { pinned: !note.pinned }),
+    isOpen,
+    onOpenChange: (open) => onSwipeChange?.(note.id, open),
+    maxSwipe: 120,
+    threshold: 60,
+    deleteThreshold: true,
+  });
+
+  const { isLongPressFired } = useLongPress(cardRef, () => {
+    onLongPress?.(note);
+  }, { delay: 500, moveTolerance: 10 });
+
+  // Close this swipe when another card opens
+  useEffect(() => {
+    if (!isOpen && openSwipeId !== null) {
+      reset();
+    }
+  }, [openSwipeId, isOpen]);
+
+  const handleClick = (e) => {
+    if (isSwiping() || isLongPressFired()) return;
+    onOpen();
+  };
+
   return (
-    <button onClick={onOpen} style={{
-      background: 'var(--paper-light)',
-      border: `1px solid var(--fold)`,
-      borderRadius: 14, padding: pad,
-      cursor: 'pointer',
-      transition: 'transform .12s, box-shadow .12s',
-      position: 'relative',
-      paddingLeft: catColor ? pad + 6 : pad,
-      textAlign: 'left', width: '100%', font: 'inherit', color: 'inherit',
-    }}
-    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(.99)'; }}
-    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}>
-      {catColor && <div className="category-bar" style={{ background: catColor }} />}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <KindBadge kind={note.kind} dur={note.duration} />
-        <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>
-          {timeLabel(note.createdAt)}
-        </span>
-        {note.pinned && <span style={{ fontSize: 11, color: 'var(--seal)' }}>· 钉</span>}
+    <div className="swipe-row" style={{ position: 'relative', overflow: 'hidden', borderRadius: 14 }}>
+      <div className="swipe-actions" style={{
+        position: 'absolute', right: 0, top: 0, bottom: 0, width: 120,
+        display: 'flex', alignItems: 'stretch',
+      }}>
+        <button onClick={(e) => { e.stopPropagation(); onUpdate?.(note.id, { pinned: !note.pinned }); reset(); }}
+          style={{
+            flex: 1, background: 'var(--ochre)', border: 'none',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+            color: '#fff', fontFamily: T.fontSerif, fontSize: 11, cursor: 'pointer',
+          }}>
+          <ICONS.pin size={18} fill={note.pinned ? '#fff' : 'none'} />
+          {note.pinned ? '取钉' : '钉住'}
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); onDelete?.(note.id); }}
+          style={{
+            flex: 1, background: 'var(--seal)', border: 'none',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+            color: '#fff', fontFamily: T.fontSerif, fontSize: 11, cursor: 'pointer',
+          }}>
+          <ICONS.trash size={18} />
+          删除
+        </button>
       </div>
-      <div style={{
-        fontFamily: T.fontSerif, fontSize: 15, fontWeight: 600,
-        color: 'var(--ink)', marginBottom: 4,
-      }}>{note.title}</div>
-      {note.body && (
+      <button ref={cardRef} onClick={handleClick} className="swipe-card" style={{
+        background: 'var(--paper-light)',
+        border: `1px solid var(--fold)`,
+        borderRadius: 14, padding: pad,
+        cursor: 'pointer',
+        transition: 'transform .25s cubic-bezier(.2,.8,.2,1)',
+        position: 'relative',
+        paddingLeft: catColor ? pad + 6 : pad,
+        textAlign: 'left', width: '100%', font: 'inherit', color: 'inherit',
+        willChange: 'transform',
+      }}>
+        {catColor && <div className="category-bar" style={{ background: catColor }} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <KindBadge kind={note.kind} dur={note.duration} />
+          <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>
+            {timeLabel(note.createdAt)}
+          </span>
+          {note.pinned && <span style={{ fontSize: 11, color: 'var(--seal)' }}>· 钉</span>}
+        </div>
         <div style={{
-          fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.55, marginBottom: 8,
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}>{note.body}</div>
-      )}
-      {note.photo && !virtualMode && (
-        <div style={{
-          height: 120, borderRadius: 10, marginBottom: 8,
-          backgroundImage: `url(${note.photo})`, backgroundSize: 'cover', backgroundPosition: 'center',
-          border: `1px solid var(--fold)`,
-        }} />
-      )}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        {(note.tags || []).slice(0, 3).map((t, i) => (
-          <Tag key={t.label + i} label={t.label} color={t.color} size="sm" />
-        ))}
-      </div>
-    </button>
+          fontFamily: T.fontSerif, fontSize: 15, fontWeight: 600,
+          color: 'var(--ink)', marginBottom: 4,
+        }}>{note.title}</div>
+        {note.body && (
+          <div style={{
+            fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.55, marginBottom: 8,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>{note.body}</div>
+        )}
+        {note.photo && !virtualMode && (
+          <div style={{
+            height: 120, borderRadius: 10, marginBottom: 8,
+            backgroundImage: `url(${note.photo})`, backgroundSize: 'cover', backgroundPosition: 'center',
+            border: `1px solid var(--fold)`,
+          }} />
+        )}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {(note.tags || []).slice(0, 3).map((t, i) => (
+            <Tag key={t.label + i} label={t.label} color={t.color} size="sm" />
+          ))}
+        </div>
+      </button>
+    </div>
   );
 });
 

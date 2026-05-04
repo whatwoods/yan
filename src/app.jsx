@@ -204,6 +204,16 @@ export function App() {
   // ── Derived state (must be before any early returns) ──────
   const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
 
+  // Compute prev/next note indices for swipe navigation
+  const { onPrev, onNext } = useMemo(() => {
+    if (!openNoteId || !notes.length) return { onPrev: null, onNext: null };
+    const idx = notes.findIndex(n => n.id === openNoteId);
+    return {
+      onPrev: idx > 0 ? () => setOpenNoteId(notes[idx - 1].id) : null,
+      onNext: idx < notes.length - 1 ? () => setOpenNoteId(notes[idx + 1].id) : null,
+    };
+  }, [notes, openNoteId]);
+
   // ── Loading screen ───────────────────────────────────────
   if (loading) {
     return (
@@ -251,6 +261,8 @@ export function App() {
               onTags={goTags}
               onCategories={() => setRoute('settings-categories')}
               onCompose={() => { setAutoExpandInput(true); setRoute('capture'); }}
+              onUpdate={updateNote}
+              onDelete={deleteNote}
             />
           )}
           {route === 'detail' && openNote_ && (
@@ -260,6 +272,8 @@ export function App() {
               onBack={closeNote}
               onUpdate={updateNote}
               onDelete={deleteNote}
+              onPrev={onPrev}
+              onNext={onNext}
             />
           )}
           {route === 'yan' && (
