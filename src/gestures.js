@@ -10,6 +10,8 @@ export function useSwipeActions(ref, { onDelete, onPin, isOpen, onOpenChange, ma
   const state = useRef({ startX: 0, startY: 0, dx: 0, locked: null, swiping: false, raf: 0 });
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
+  const cb = useRef({ onDelete, onPin, onOpenChange });
+  cb.current = { onDelete, onPin, onOpenChange };
 
   useEffect(() => {
     const el = ref.current;
@@ -32,7 +34,6 @@ export function useSwipeActions(ref, { onDelete, onPin, isOpen, onOpenChange, ma
       const rawDx = t.clientX - s.startX;
       const dy = t.clientY - s.startY;
 
-      // Direction lock
       if (s.locked === null) {
         if (Math.abs(rawDx) < 8) return;
         if (Math.abs(rawDx) > Math.abs(dy)) {
@@ -44,9 +45,7 @@ export function useSwipeActions(ref, { onDelete, onPin, isOpen, onOpenChange, ma
         }
       }
 
-      // Only allow left swipe (negative dx)
       let dx = Math.min(0, rawDx);
-      // Elastic overflow past maxSwipe
       if (dx < -maxSwipe) {
         const overflow = dx + maxSwipe;
         dx = -maxSwipe + overflow * 0.3;
@@ -73,9 +72,8 @@ export function useSwipeActions(ref, { onDelete, onPin, isOpen, onOpenChange, ma
       const dx = s.dx;
       const screenW = window.innerWidth;
 
-      // Fast delete: dx < -screenW * 0.4
       if (deleteThreshold && dx < -screenW * 0.4) {
-        onDelete?.();
+        cb.current.onDelete?.();
         el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1)';
         el.style.transform = 'translateX(0)';
         s.dx = 0;
@@ -87,10 +85,10 @@ export function useSwipeActions(ref, { onDelete, onPin, isOpen, onOpenChange, ma
       let snapX = 0;
       if (dx < -threshold) {
         snapX = -maxSwipe;
-        onOpenChange?.(true);
+        cb.current.onOpenChange?.(true);
       } else {
         snapX = 0;
-        onOpenChange?.(false);
+        cb.current.onOpenChange?.(false);
       }
 
       el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1)';
@@ -110,16 +108,15 @@ export function useSwipeActions(ref, { onDelete, onPin, isOpen, onOpenChange, ma
       el.removeEventListener('touchend', onTouchEnd);
       if (state.current.raf) cancelAnimationFrame(state.current.raf);
     };
-  }, [ref, onDelete, onPin, onOpenChange, maxSwipe, threshold, deleteThreshold]);
+  }, [ref, maxSwipe, threshold, deleteThreshold]);
 
-  // Reset swipe position externally
   const reset = () => {
     const el = ref.current;
     if (!el) return;
     el.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1)';
     el.style.transform = 'translateX(0)';
     state.current.dx = 0;
-    onOpenChange?.(false);
+    cb.current.onOpenChange?.(false);
   };
 
   return { reset, isSwiping: () => state.current.swiping };
@@ -270,18 +267,40 @@ export function useHorizontalSwipe(ref, { onPrev, onNext, enabled = true, thresh
         if (dx > 0 && callbacks.current.onPrev) trigger = 'prev';
       }
 
-      // Animate back
-      el.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1)';
-      el.style.transform = 'translateX(0)';
-
       s.dx = 0;
       s.swiping = false;
       s.locked = null;
 
       if (trigger === 'next') {
-        setTimeout(() => callbacks.current.onNext?.(), 50);
+        // Slide out to left, switch content, slide in from right
+        el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
+        el.style.transform = `translateX(${-screenW}px)`;
+        setTimeout(() => {
+          el.style.transition = 'none';
+          el.style.transform = `translateX(${screenW}px)`;
+          callbacks.current.onNext?.();
+          requestAnimationFrame(() => {
+            el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
+            el.style.transform = 'translateX(0)';
+          });
+        }, 220);
       } else if (trigger === 'prev') {
-        setTimeout(() => callbacks.current.onPrev?.(), 50);
+        // Slide out to right, switch content, slide in from left
+        el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
+        el.style.transform = `translateX(${screenW}px)`;
+        setTimeout(() => {
+          el.style.transition = 'none';
+          el.style.transform = `translateX(${-screenW}px)`;
+          callbacks.current.onPrev?.();
+          requestAnimationFrame(() => {
+            el.style.transition = 'transform .22s cubic-bezier(.2,.8,.2,1)';
+            el.style.transform = 'translateX(0)';
+          });
+        }, 220);
+      } else {
+        // Rebound
+        el.style.transition = 'transform .2s cubic-bezier(.2,.8,.2,1)';
+        el.style.transform = 'translateX(0)';
       }
     }
 

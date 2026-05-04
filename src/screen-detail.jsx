@@ -66,7 +66,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
   }
 
   return (
-    <div ref={screenRef} className="screen paper">
+    <div className="screen paper" style={{ touchAction: 'pan-y' }}>
       {/* Top bar */}
       <div
         className="detail-head"
@@ -102,6 +102,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
       </div>
 
       <div
+        ref={screenRef}
         className="scroll"
         aria-hidden={isFullEditor ? 'true' : undefined}
         style={{ flex: 1, padding: '4px 24px 24px' }}

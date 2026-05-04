@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { TOKENS, dayLabel, timeLabel } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, KindBadge, ScrHead, showToast, ActionSheet } from './components.jsx';
+import { SealStamp, Tag, KindBadge, ScrHead, showToast, PopoverMenu } from './components.jsx';
 import { Store } from './store.jsx';
 import { getMeta, setMeta } from './db.js';
 import { initWebDAV, syncAll } from './sync.js';
@@ -65,7 +65,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
   const [syncing, setSyncing] = useState(false);
   const [conflictCount, setConflictCount] = useState(0);
   const [openSwipeId, setOpenSwipeId] = useState(null);
-  const [actionSheet, setActionSheet] = useState(null);
+  const [actionMenu, setActionMenu] = useState(null);
   const scrollRef = useRef(null);
   const pullRef = useRef({ startY: 0, pulling: false });
 
@@ -429,7 +429,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
               }
               return (
                 <div key={item.note.id} style={{ position: 'absolute', top, left: 0, right: 0, height: itemH, paddingTop: item.type === 'header' ? 0 : 2, paddingBottom: 2 }}>
-                  <NoteCard note={item.note} pad={item.pad} catColor={catMap.get(item.note.category)} onOpen={() => onOpenNote(item.note.id)} virtualMode openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={(n) => setActionSheet({ noteId: n.id, noteTitle: n.title, pinned: n.pinned })} />
+                  <NoteCard note={item.note} pad={item.pad} catColor={catMap.get(item.note.category)} onOpen={() => onOpenNote(item.note.id)} virtualMode openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={setActionMenu} />
                 </div>
               );
             })}
@@ -448,7 +448,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                   <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={(n) => setActionSheet({ noteId: n.id, noteTitle: n.title, pinned: n.pinned })} />)}
+                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={setActionMenu} />)}
                 </div>
               </div>
             )}
@@ -466,7 +466,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{remain.length} 条</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={(n) => setActionSheet({ noteId: n.id, noteTitle: n.title, pinned: n.pinned })} />)}
+                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} openSwipeId={openSwipeId} onSwipeChange={(id, open) => setOpenSwipeId(open ? id : null)} onUpdate={onUpdate} onDelete={onDelete} onLongPress={setActionMenu} />)}
                   </div>
                 </div>
               );
@@ -475,42 +475,42 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
         )}
       </div>
 
-      {/* ActionSheet */}
-      {actionSheet && (
-        <ActionSheet
+      {/* PopoverMenu */}
+      {actionMenu && (
+        <PopoverMenu
+          x={actionMenu.x}
+          y={actionMenu.y}
           items={[
             {
-              icon: <ICONS.pin size={18} fill={actionSheet.pinned ? 'currentColor' : 'none'} />,
-              label: actionSheet.pinned ? '取消钉住' : '钉住',
-              onSelect: () => onUpdate?.(actionSheet.noteId, { pinned: !actionSheet.pinned }),
+              icon: <I.pin size={16} fill={actionMenu.note.pinned ? 'currentColor' : 'none'} />,
+              label: actionMenu.note.pinned ? '取消钉住' : '钉住',
+              onSelect: () => onUpdate?.(actionMenu.note.id, { pinned: !actionMenu.note.pinned }),
             },
             {
-              icon: <ICONS.pen size={18} />,
-              label: '复制正文',
+              icon: <I.pen size={16} />,
+              label: '复制',
               onSelect: async () => {
-                const note = notes.find(n => n.id === actionSheet.noteId);
-                if (note?.body) {
-                  try { await navigator.clipboard.writeText(note.body); showToast('已复制'); }
+                if (actionMenu.note?.body) {
+                  try { await navigator.clipboard.writeText(actionMenu.note.body); showToast('已复制'); }
                   catch { showToast('复制失败'); }
                 }
               },
             },
             ...(navigator.share ? [{
-              icon: <ICONS.globe size={18} />,
+              icon: <I.globe size={16} />,
               label: '分享',
               onSelect: () => {
-                const note = notes.find(n => n.id === actionSheet.noteId);
-                if (note) navigator.share({ title: note.title, text: note.body }).catch(() => {});
+                navigator.share({ title: actionMenu.note.title, text: actionMenu.note.body }).catch(() => {});
               },
             }] : []),
             {
-              icon: <ICONS.trash size={18} />,
+              icon: <I.trash size={16} />,
               label: '删除',
               danger: true,
-              onSelect: () => onDelete?.(actionSheet.noteId),
+              onSelect: () => onDelete?.(actionMenu.note.id),
             },
           ]}
-          onClose={() => setActionSheet(null)}
+          onClose={() => setActionMenu(null)}
         />
       )}
 
@@ -534,19 +534,25 @@ const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, vir
   const T = TOKENS;
   const cardRef = useRef(null);
   const isOpen = openSwipeId === note.id;
+  const recentSwipeRef = useRef(false);
 
   const { reset, isSwiping } = useSwipeActions(cardRef, {
     onDelete: () => onDelete?.(note.id),
     onPin: () => onUpdate?.(note.id, { pinned: !note.pinned }),
     isOpen,
-    onOpenChange: (open) => onSwipeChange?.(note.id, open),
-    maxSwipe: 120,
+    onOpenChange: (open) => {
+      onSwipeChange?.(note.id, open);
+      recentSwipeRef.current = true;
+      setTimeout(() => { recentSwipeRef.current = false; }, 250);
+    },
+    maxSwipe: 100,
     threshold: 60,
     deleteThreshold: true,
   });
 
-  const { isLongPressFired } = useLongPress(cardRef, () => {
-    onLongPress?.(note);
+  const { isLongPressFired } = useLongPress(cardRef, (e) => {
+    const t = e.touches?.[0] || e;
+    onLongPress?.({ x: t.clientX, y: t.clientY, note });
   }, { delay: 500, moveTolerance: 10 });
 
   // Close this swipe when another card opens
@@ -556,34 +562,27 @@ const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, vir
     }
   }, [openSwipeId, isOpen]);
 
-  const handleClick = (e) => {
-    if (isSwiping() || isLongPressFired()) return;
+  const handleClick = () => {
+    if (recentSwipeRef.current || isLongPressFired()) return;
+    if (isOpen) { reset(); return; }
     onOpen();
   };
 
   return (
     <div className="swipe-row" style={{ position: 'relative', overflow: 'hidden', borderRadius: 14 }}>
       <div className="swipe-actions" style={{
-        position: 'absolute', right: 0, top: 0, bottom: 0, width: 120,
+        position: 'absolute', right: 0, top: 0, bottom: 0, width: 100,
         display: 'flex', alignItems: 'stretch',
       }}>
         <button onClick={(e) => { e.stopPropagation(); onUpdate?.(note.id, { pinned: !note.pinned }); reset(); }}
-          style={{
-            flex: 1, background: 'var(--ochre)', border: 'none',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-            color: '#fff', fontFamily: T.fontSerif, fontSize: 11, cursor: 'pointer',
-          }}>
-          <ICONS.pin size={18} fill={note.pinned ? '#fff' : 'none'} />
-          {note.pinned ? '取钉' : '钉住'}
+          className="swipe-btn pin">
+          <ICONS.pin size={18} fill={note.pinned ? 'currentColor' : 'none'} />
+          <span>{note.pinned ? '取钉' : '钉住'}</span>
         </button>
         <button onClick={(e) => { e.stopPropagation(); onDelete?.(note.id); }}
-          style={{
-            flex: 1, background: 'var(--seal)', border: 'none',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-            color: '#fff', fontFamily: T.fontSerif, fontSize: 11, cursor: 'pointer',
-          }}>
+          className="swipe-btn danger">
           <ICONS.trash size={18} />
-          删除
+          <span>删除</span>
         </button>
       </div>
       <button ref={cardRef} onClick={handleClick} className="swipe-card" style={{

@@ -600,23 +600,48 @@ mark {
   font-weight: 600;
 }
 
-/* ActionSheet — bottom slide-up, reuses sheet design language */
-.action-sheet {
-  position: fixed; left: var(--safe-left); right: var(--safe-right); bottom: 0;
-  background: var(--paper-light);
-  border-top-left-radius: 22px; border-top-right-radius: 22px;
-  box-shadow: var(--shadow-deep);
-  max-height: 50vh;
-  display: flex; flex-direction: column;
-  z-index: 51;
-  padding-bottom: var(--safe-bottom);
-  animation: slide-up .26s cubic-bezier(.2, .8, .2, 1);
-}
-
 /* Swipe card container */
 .swipe-row { touch-action: pan-y; }
 .swipe-card { touch-action: pan-y; }
-.screen.paper { touch-action: pan-y; }
+.swipe-card:active { transform: scale(.99); }
+
+/* Swipe action buttons */
+.swipe-btn {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px;
+  font-family: var(--font-serif); font-size: 11px;
+  border: none; cursor: pointer;
+}
+.swipe-btn.pin    { background: var(--paper-deep); color: var(--ink-soft); }
+.swipe-btn.danger { background: var(--paper-deep); color: var(--seal); }
+.swipe-btn:active { filter: brightness(.95); }
+.swipe-btn.danger:active { background: var(--seal); color: #fff; }
+
+/* Popover menu */
+.popover-menu {
+  background: var(--paper-light);
+  border: 1px solid var(--fold);
+  border-radius: 12px;
+  box-shadow: var(--shadow-deep);
+  padding: 4px;
+  min-width: 140px;
+  animation: pop-in .14s cubic-bezier(.2,.8,.2,1);
+  transform-origin: top left;
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.popover-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 12px;
+  background: transparent; border: none;
+  font-family: var(--font-serif); font-size: 14px;
+  color: var(--ink); cursor: pointer;
+  border-radius: 8px; text-align: left;
+}
+.popover-item:active { background: var(--paper-deep); }
+.popover-item.danger { color: var(--seal); }
 
 /* Left border color bar on note cards */
 .category-bar {

@@ -164,36 +164,34 @@ export function ScrHead({ title, right, brushSize = 26, sub }) {
   );
 }
 
-// ActionSheet — bottom slide-up menu triggered by long press
-export function ActionSheet({ items, onClose }) {
+// PopoverMenu — floating context menu positioned at touch point
+export function PopoverMenu({ x, y, items, onClose }) {
+  const [pos, setPos] = useState({ left: x, top: y });
+
+  React.useLayoutEffect(() => {
+    const W = 140;
+    const H = items.length * 38 + 12;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = x + 4;
+    let top = y + 4;
+    if (left + W > vw - 8) left = x - W - 4;
+    if (top + H > vh - 8) top = y - H - 4;
+    left = Math.max(8, left);
+    top = Math.max(8, top);
+    setPos({ left, top });
+  }, [x, y, items.length]);
+
   return (
     <>
-      <div className="sheet-mask" onClick={onClose} />
-      <div className="action-sheet" role="dialog" aria-modal="true" aria-label="操作菜单">
-        <div className="sheet-grip" />
-        <div style={{ padding: '4px 16px 20px' }}>
-          {items.map((item, i) => (
-            <button key={i} onClick={() => { item.onSelect?.(); onClose(); }} style={{
-              background: 'transparent', border: 'none',
-              padding: '14px 12px', borderRadius: 12,
-              fontFamily: 'var(--font-serif)', fontSize: 15,
-              color: item.danger ? 'var(--seal)' : 'var(--ink)',
-              display: 'flex', alignItems: 'center', gap: 12,
-              cursor: 'pointer', textAlign: 'left', width: '100%',
-            }}>
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
-          <div style={{ height: 8 }} />
-          <button onClick={onClose} style={{
-            background: 'var(--paper-deep)', border: 'none',
-            padding: '14px 12px', borderRadius: 12,
-            fontFamily: 'var(--font-serif)', fontSize: 15,
-            color: 'var(--ink-mute)',
-            cursor: 'pointer', textAlign: 'center', width: '100%',
-          }}>取消</button>
-        </div>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
+      <div role="menu" className="popover-menu"
+        style={{ position: 'fixed', left: pos.left, top: pos.top, zIndex: 51 }}>
+        {items.map((it, i) => (
+          <button key={i} className={`popover-item ${it.danger ? 'danger' : ''}`}
+            onClick={() => { it.onSelect?.(); onClose(); }}>
+            {it.icon}<span>{it.label}</span>
+          </button>
+        ))}
       </div>
     </>
   );
