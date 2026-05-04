@@ -1,7 +1,7 @@
 // ai-tagger.js — AI tagging, auto-tagging, people extraction, and askYan chat.
 
 import { formatRelative } from './tokens.jsx';
-import { classifyNote, extractTagsAndPeople, generateSummary } from './ai.js';
+import { classifyNote, extractTagsAndPeople, generateSummary, generateTitle } from './ai.js';
 import { TAG_DICT, PEOPLE_HINT } from './tag-colors.js';
 
 // ── Rule-based tagger ────────────────────────────────────────
@@ -72,12 +72,14 @@ function aggregateTagData(allNotes) {
 export async function processNoteWithAI(note, categories, allNotes) {
   try {
     const { sortedTags, people } = allNotes?.length ? aggregateTagData(allNotes) : { sortedTags: [], people: [] };
-    const [category, tagResult, summary] = await Promise.all([
+    const [category, tagResult, summary, aiTitle] = await Promise.all([
       classifyNote(note.body, categories),
       extractTagsAndPeople(note.body, sortedTags, people, categories),
       generateSummary(note.body),
+      generateTitle(note.body),
     ]);
     return {
+      title: aiTitle || autoTitle(note.body),
       category: category || note.category || '想法',
       tags: tagResult.tags.length ? tagResult.tags.map(t => ({ label: t, color: 'ink' })) : note.tags,
       people: tagResult.people.length ? tagResult.people : note.people,
