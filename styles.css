@@ -103,13 +103,12 @@ html, body {
   background: var(--paper);
   font-family: var(--font-sans);
 }
-.boot-seal {
+.boot-icon {
   width: 88px; height: 88px; border-radius: 14px;
-  background: var(--seal); color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-serif); font-size: 46px; font-weight: 600;
+  display: block;
+  object-fit: contain;
   transform: rotate(-5deg);
-  box-shadow: 0 12px 32px rgba(184,68,58,.35), inset 0 0 0 3px rgba(255,255,255,.2);
+  filter: drop-shadow(0 12px 28px rgba(40, 28, 16, .22));
   animation: pulse 2.2s ease-in-out infinite;
 }
 .boot-text {

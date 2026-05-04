@@ -356,13 +356,17 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           borderRadius: 14, padding: 14, marginBottom: 18,
           display: 'flex', alignItems: 'center', gap: 12,
         }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: 12,
-            background: 'var(--ochre)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: T.fontSerif, fontSize: 22, fontWeight: 600,
-            transform: 'rotate(-3deg)',
-          }}>本</div>
+          <img
+            src="icon-192.png"
+            alt=""
+            aria-hidden="true"
+            style={{
+              width: 48, height: 48, borderRadius: 12,
+              objectFit: 'contain', flexShrink: 0,
+              transform: 'rotate(-3deg)',
+              filter: 'drop-shadow(0 3px 8px rgba(40, 28, 16, .18))',
+            }}
+          />
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: T.fontSerif, fontSize: 16, color: 'var(--ink)', fontWeight: 600 }}>
               本地笔记
