@@ -1,6 +1,6 @@
 // app.jsx — main React shell, routing, global state.
 
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { TOKENS, PERSONAS } from './tokens.jsx';
 import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
@@ -146,18 +146,30 @@ export function App() {
 
   // ── Routing helpers ──────────────────────────────────────
   const openNote = (id) => { setOpenNoteId(id); setRoute('detail'); };
-  const closeNote = () => { setOpenNoteId(null); setFilterTag(null); setRoute('list'); };
+  const closeNote = () => { setOpenNoteId(null); setFilterTag(null); skipPushRef.current = true; setRoute('list'); };
   const goSearch = () => setRoute('search');
   const goTags = () => setRoute('tags');
 
-  // Browser back button support (a tiny popstate dance)
+  // ── Browser back button support ───────────────────────────
+  const skipPushRef = useRef(false);
+  const MAIN_ROUTES = ['capture', 'list', 'yan', 'settings'];
+
+  // Push history entry when navigating to a sub-page
   useEffect(() => {
-    const onPop = () => {
-      if (route === 'detail' || route === 'search' || route === 'tags' || route === 'trash') {
-        setRoute(route === 'detail' ? 'list' : route === 'trash' ? 'settings' : 'list');
-      } else if (route.startsWith('settings-')) {
-        setRoute('settings');
-      }
+    if (skipPushRef.current) { skipPushRef.current = false; return; }
+    if (!MAIN_ROUTES.includes(route)) {
+      history.pushState({ route }, '');
+    }
+  }, [route]);
+
+  // Handle Android/browser back button
+  useEffect(() => {
+    const onPop = (e) => {
+      if (MAIN_ROUTES.includes(route)) return;
+      const target = route === 'detail' ? 'list' : route === 'trash' ? 'settings'
+        : route.startsWith('settings-') ? 'settings' : 'list';
+      skipPushRef.current = true;
+      setRoute(target);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -345,6 +357,7 @@ export function App() {
             if (k === route) return;
             setOpenNoteId(null);
             setFilterTag(null);
+            skipPushRef.current = true;
             setRoute(k);
           }} />
         )}

@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor } from './components.jsx';
+import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
 import { getAIConfig } from './ai.js';
 
@@ -41,6 +41,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
   const [categories, setCategories] = useState([]);
   const [isFullEditor, setFullEditor] = useState(false);
   const [isClosing, setClosing] = useState(false);
+  const handleAutoNumber = useAutoNumber(text, setText);
   const [showIdleSuggestions, setShowIdleSuggestions] = useState(true);
 
   const taRef = useRef(null);
@@ -515,6 +516,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
               ref={taRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleAutoNumber}
               placeholder="此处落笔…"
               className="capture-textarea"
               style={{

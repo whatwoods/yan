@@ -1,6 +1,6 @@
 // components.jsx — Shared visual primitives: SealStamp, BrushTitle, Tag, BottomNav, Toast, KindBadge.
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ICONS } from './icons.jsx';
 
 export function SealStamp({ text = '砚', size = 36, rotate = -6, color }) {
@@ -107,6 +107,7 @@ export function FullscreenTextEditor({
 }) {
   const I = ICONS;
   const taRef = useRef(null);
+  const handleAutoNumber = useAutoNumber(value, onChange);
 
   useEffect(() => {
     const id = setTimeout(() => taRef.current?.focus({ preventScroll: true }), 80);
@@ -142,6 +143,7 @@ export function FullscreenTextEditor({
           className="full-editor-textarea"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleAutoNumber}
           placeholder={placeholder}
         />
       </div>
@@ -160,4 +162,35 @@ export function ScrHead({ title, right, brushSize = 26, sub }) {
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>{right}</div>
     </div>
   );
+}
+
+// ── useAutoNumber — auto-continue numbered lists on Enter ─────
+const NUMBER_RE = /^(\d+)\.\s/;
+
+export function useAutoNumber(value, setValue) {
+  return useMemo(() => (e) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    const ta = e.target;
+    const { selectionStart: pos, value: cur } = ta;
+    const lineStart = cur.lastIndexOf('\n', pos - 1) + 1;
+    const line = cur.slice(lineStart, pos);
+    const m = line.match(NUMBER_RE);
+    if (!m) return;
+    e.preventDefault();
+    const n = parseInt(m[1], 10);
+    const indent = line.slice(0, m[0].length);
+    const content = line.slice(m[0].length);
+    if (!content.trim()) {
+      // Empty item → remove number, break out of list
+      const next = cur.slice(0, lineStart) + '\n' + cur.slice(pos);
+      setValue(next);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = lineStart + 1; });
+      return;
+    }
+    const nextNum = indent.replace(/\d+/, String(n + 1));
+    const insert = '\n' + nextNum;
+    const next = cur.slice(0, pos) + insert + cur.slice(pos);
+    setValue(next);
+    requestAnimationFrame(() => { const c = pos + insert.length; ta.selectionStart = ta.selectionEnd = c; });
+  }, [value, setValue]);
 }

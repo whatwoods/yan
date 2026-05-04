@@ -290,7 +290,7 @@ html, body {
 }
 
 /* Touch feedback on tappable elements */
-.card:active, .btn-ghost:active, .tag:active, .category-tab:active {
+.card:active:not(.settings-section), .btn-ghost:active, .tag:active, .category-tab:active {
   transform: scale(0.97);
   opacity: 0.8;
   transition: transform 0.1s, opacity 0.1s;

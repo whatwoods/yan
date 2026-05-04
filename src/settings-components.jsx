@@ -37,7 +37,7 @@ export function Section({ title, children }) {
         fontSize: 11, color: 'var(--ink-mute)', letterSpacing: '.1em',
         textTransform: 'uppercase', padding: '0 4px 8px', fontFamily: T.fontSerif,
       }}>{title}</div>
-      <div className="card" style={{ padding: 0, borderRadius: 14, overflow: 'hidden' }}>
+      <div className="card settings-section" style={{ padding: 0, borderRadius: 14, overflow: 'hidden' }}>
         {children}
       </div>
     </div>

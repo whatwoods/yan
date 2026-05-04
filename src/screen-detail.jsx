@@ -5,7 +5,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { TOKENS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, showToast, FullscreenTextEditor } from './components.jsx';
+import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 
 export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
@@ -17,6 +17,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [categories, setCategories] = useState([]);
   const [isFullEditor, setFullEditor] = useState(false);
+  const handleAutoNumber = useAutoNumber(body, setBody);
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
@@ -167,6 +168,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
               autoFocus
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onKeyDown={handleAutoNumber}
               className="detail-editor-textarea"
               style={{
                 width: '100%', border: `1px solid var(--fold)`,
