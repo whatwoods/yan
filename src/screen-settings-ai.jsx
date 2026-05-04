@@ -81,7 +81,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
       const models = await aiFetchModels(endpoint, aiConfig.apiKey);
       if (models.length > 0) {
         setAiModels(models);
-        const updated = { ...aiConfig, models, defaultModel: aiConfig.defaultModel || models[0] };
+        const updated = { ...aiConfig, endpoint, models, defaultModel: aiConfig.defaultModel || models[0] };
         await saveAiConfig(updated);
         showToast(`连接成功 · ${models.length} 个模型`);
       } else {

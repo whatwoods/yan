@@ -36,9 +36,16 @@ export function SyncSettingsScreen({ onBack, settings }) {
           if (SecretsStore.isUnlocked()) setSecretsUnlocked(true);
         }
         if (savedWebdav) {
-          setWebdavConfig(prev => ({ ...prev, ...savedWebdav, password: savedWebdav.password || '' }));
+          setWebdavConfig(prev => ({
+            ...prev,
+            ...savedWebdav,
+            password: savedWebdav.password || SecretsStore.get('webdavPassword') || '',
+          }));
           if (savedWebdav.server && savedWebdav.username && !(hasPw && !SecretsStore.isUnlocked())) {
-            initWebDAV(savedWebdav);
+            initWebDAV({
+              ...savedWebdav,
+              password: savedWebdav.password || SecretsStore.get('webdavPassword') || '',
+            });
           }
         }
         if (savedLastSync) setWebdavStatus({ lastSync: savedLastSync });
@@ -50,22 +57,24 @@ export function SyncSettingsScreen({ onBack, settings }) {
   const secretsLocked = masterPasswordSet && !secretsUnlocked;
 
   const saveWebdavConfig = useCallback(async (config) => {
-    setWebdavConfig(config);
+    const password = config.password || (secretsUnlocked ? SecretsStore.get('webdavPassword') || '' : '');
+    const nextConfig = { ...config, password };
+    setWebdavConfig(nextConfig);
     if (masterPasswordSet && secretsUnlocked) {
       await SecretsStore.update({
         apiKey: SecretsStore.get('apiKey') || '',
-        webdavPassword: config.password,
+        webdavPassword: password,
       });
-      const { password, ...safe } = config;
+      const { password: _password, ...safe } = nextConfig;
       await setMeta('webdavConfig', safe);
     } else if (masterPasswordSet) {
-      const { password, ...safe } = config;
+      const { password: _password, ...safe } = nextConfig;
       await setMeta('webdavConfig', safe);
     } else {
-      await setMeta('webdavConfig', config);
+      await setMeta('webdavConfig', nextConfig);
     }
-    if (config.server && config.username && (!masterPasswordSet || secretsUnlocked)) {
-      initWebDAV(config);
+    if (nextConfig.server && nextConfig.username && (!masterPasswordSet || secretsUnlocked)) {
+      initWebDAV(nextConfig);
     }
   }, [masterPasswordSet, secretsUnlocked]);
 

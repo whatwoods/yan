@@ -223,11 +223,7 @@ export const Store = {
       duration: note.duration || null,
     };
 
-    try {
-      await putNote(fullNote);
-    } catch (err) {
-      console.error('putNote failed:', err);
-    }
+    await putNote(fullNote);
     Store._notes.unshift(fullNote);
     addNoteToIndex(fullNote);
     Store._touchNotes();
@@ -246,11 +242,7 @@ export const Store = {
     // Sync backward-compat fields
     if (patch.created) updated.createdAt = new Date(patch.created).getTime();
 
-    try {
-      await putNote(updated);
-    } catch (err) {
-      console.error('putNote failed:', err);
-    }
+    await putNote(updated);
     Store._notes[idx] = updated;
     updateNoteInIndex(updated);
     Store._touchNotes();

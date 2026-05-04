@@ -112,7 +112,10 @@ export function App() {
     // AI processing with 1.5s debounce
     setTimeout(async () => {
       const categories = await Store.getCategories();
-      const aiResult = await processNoteWithAI(addedNote, categories, Store.getNotes());
+      let aiResult = null;
+      if (aiConfigured) {
+        aiResult = await processNoteWithAI(addedNote, categories, Store.getNotes());
+      }
       if (aiResult) {
         const patch = settings.autoTag ? aiResult : { ...aiResult, tags: addedNote.tags || [] };
         await Store.updateNote(addedNote.id, patch);
@@ -128,7 +131,7 @@ export function App() {
 
       showToast('砚已识其要意');
     }, 1500);
-  }, [settings.autoTag, showSetupHint]);
+  }, [aiConfigured, settings.autoTag, showSetupHint]);
 
   const updateNote = useCallback(async (id, patch) => {
     await Store.updateNote(id, patch);

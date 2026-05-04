@@ -1,15 +1,17 @@
 # 砚
 
-**会思考的本地优先笔记本。** 砚是一款移动端优先的 PWA 笔记应用：随手记录文字、语音和照片，本地保存到 IndexedDB，再按需用你自己的 AI Key 做分类、标签、摘要、问答和月度洞察。同步走 WebDAV，笔记以 Markdown 形式落在你自己的存储里。
+**会思考的本地优先笔记本。** 砚是一款移动端优先的 PWA 笔记应用：随手记录文字、语音和照片，本地保存到 IndexedDB，再按需用你自己的 AI Key 做标题、分类、标签、摘要、问答和月度洞察。同步走 WebDAV，笔记以 Markdown + YAML frontmatter 形式落在你自己的存储里。
 
 ## 当前能力
 
-- **零摩擦捕获**：首页全能输入支持文字、语音和照片；照片会在浏览器内压缩为 JPEG，语音优先使用 Web Speech API，缺失时尝试走 OpenAI 兼容的音频转写接口。
-- **自动整理**：保存后先本地生成标题、标签、人物线索和摘要；配置 AI 后并行执行分类、打标签、摘要生成和人物提取。
-- **笔记本视图**：按时间线浏览，支持置顶、分类筛选、标签筛选、全文搜索、详情编辑、Markdown 渲染和软删除回收站。
+- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音优先使用 Web Speech API，缺失时尝试走 OpenAI 兼容的音频转写接口；长文本可进入全屏落笔，并支持列表自动编号续写。
+- **自动整理**：保存后先本地生成标题、标签、人物线索和摘要；配置 AI 后可执行分类、取标题、打标签、摘要生成和人物提取，并按任务分配不同模型。
+- **笔记本视图**：按时间线浏览，支持置顶、分类筛选、上下文标签筛选、全文搜索、标签管理、卡片密度切换、100 条以上虚拟列表、下拉同步、左滑钉住/删除和长按菜单。
+- **详情编辑**：详情页支持 Markdown 渲染、分类切换、相关笔记、全屏编辑、左右滑动翻页、软删除和回收站恢复。
 - **问砚与洞察**：砚页提供本月统计、热力图、常用标签、AI 月度洞察、问砚 RAG 问答和洞察长图导出。
-- **Tag Curator**：AI 定期分析标签统计和共现关系，给出合并、重命名、归档、新增等整理建议。
-- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，双向同步笔记、分类、洞察、偏好和回收站，并把冲突副本写入 `/yan/conflicts/`。
+- **Tag Curator**：AI 定期分析标签统计和共现关系，给出合并、重命名、归档、新增等整理建议；标签管理页也会提示本地可判断的相似标签。
+- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，双向同步笔记、照片附件、分类、洞察、偏好和回收站，并把冲突副本写入远程 `conflicts/`。
+- **数据管理**：设置页提供 Markdown 导出、分类管理、回收站、示例数据重置、全量清空、PWA 安装入口和主密码管理。
 - **隐私优先**：应用没有自带后端；笔记默认只在本机 IndexedDB，AI 请求只发往你配置的供应商，敏感 Key 可用主密码加密。
 - **离线可用**：Service Worker 缓存应用壳和构建产物，支持 PWA 安装和离线读写。
 
@@ -41,7 +43,7 @@ npm run build
 node --test tests/*.test.mjs
 ```
 
-`package.json` 目前只定义了 `dev`、`build`、`preview` 三个脚本，所以测试命令暂时需要直接调用 `node --test`。
+`package.json` 目前只定义了 `dev`、`build`、`preview` 三个脚本，所以测试命令暂时需要直接调用 `node --test`。现有测试覆盖长图导出、Markdown frontmatter、WebDAV 代理、个性化设置移除和详情页层级关系。
 
 ## 运行要求
 
@@ -67,19 +69,20 @@ node --test tests/*.test.mjs
 - OpenAI
 - 自定义 endpoint
 
-可配置默认模型，也可为不同任务单独分配模型：分类、打标签、摘要、月度洞察、问砚、标签整理。未配置 AI 时，应用仍会使用本地规则完成基础标题、标签、摘要和搜索。
+可配置默认模型，也可为不同任务单独分配模型：分类、打标签、摘要、取标题、月度洞察、问砚、标签整理。未配置 AI 时，应用仍会使用本地规则完成基础标题、标签、摘要、人物提取和搜索。
 
 ### WebDAV
 
-WebDAV 配置包含服务器地址、用户名和密码。开发环境会把浏览器请求从同源 `/dav/<encoded-server>/...` 转发到真实服务器，避免坚果云这类服务缺少 CORS 响应头导致 `PROPFIND` 预检失败。同步路径约定如下：
+WebDAV 配置包含服务器地址、用户名、密码和远程根路径，默认根路径是 `/yan`。开发环境和 `vite preview` 会把浏览器请求从同源 `/dav/<encoded-server>/...` 转发到真实服务器，避免坚果云这类服务缺少 CORS 响应头导致 `PROPFIND` 预检失败。Service Worker 会跳过 `/dav/` 流量，不缓存同步请求。同步路径约定如下：
 
 ```text
-/yan/notes/<year>/<month>/<id>.md     # 正常笔记
-/yan/trash/<id>.md                    # 回收站
-/yan/categories.json                  # 分类
-/yan/insights/<YYYY-MM>.md            # 月度洞察
-/yan/preferences.md                   # 偏好
-/yan/conflicts/<id>.md                # 冲突副本
+<root>/notes/<year>/<month>/<id>.md        # 正常笔记
+<root>/trash/<id>.md                       # 回收站
+<root>/attachments/<id>/<filename>         # 照片附件
+<root>/categories.json                     # 分类
+<root>/insights/<YYYY-MM>.md               # 月度洞察
+<root>/preferences.md                      # 偏好
+<root>/conflicts/<local|remote>-<modified>-<id>.md  # 冲突副本
 ```
 
 ### 主密码
@@ -92,7 +95,7 @@ WebDAV 配置包含服务器地址、用户名和密码。开发环境会把浏�
 
 ## 数据格式
 
-每条笔记会序列化为 Markdown + YAML frontmatter，标签使用裸字符串数组，方便 Obsidian 等工具读取。
+每条笔记会序列化为 Markdown + YAML frontmatter，标签使用裸字符串数组，方便 Obsidian 等工具读取。照片会作为附件同步，frontmatter 中用 `photo` / `attachments` 记录文件名。
 
 ```markdown
 ---
@@ -108,6 +111,7 @@ people:
   - 阿宁
 pinned: false
 attachments: []
+photo: null
 ai:
   summary: 今天重新确认了首屏信息架构。
   generated_at: '2026-05-04T10:35:00.000Z'
@@ -117,7 +121,7 @@ ai:
 晚饭后又重新想了一遍首屏……
 ```
 
-软删除笔记会额外带 `deleted_at` 字段，并同步到 `/yan/trash/`。
+软删除笔记会额外带 `deleted_at` 字段，并同步到 `<root>/trash/`。
 
 ## 技术栈
 
@@ -128,9 +132,11 @@ ai:
 | 本地存储 | IndexedDB + `idb` |
 | 全文检索 | `minisearch` |
 | Markdown 渲染 | `marked` + `dompurify` |
+| Markdown 数据 | YAML frontmatter + `yaml` |
 | 长图导出 | `html2canvas` |
 | 加密 | Web Crypto API（PBKDF2 + AES-GCM） |
 | AI 协议 | OpenAI 兼容 `/v1/chat/completions` |
+| 语音转写 | Web Speech API，或 OpenAI 兼容 `/v1/audio/transcriptions` |
 | 同步 | 浏览器 fetch + 同源 WebDAV 代理 |
 | PWA | Web App Manifest + Service Worker |
 
@@ -154,8 +160,11 @@ ai:
 │   ├── db.js                  # IndexedDB 封装
 │   ├── store.jsx              # 笔记 CRUD、设置、分类、迁移入口
 │   ├── migrate.js             # localStorage 到 IndexedDB 迁移
+│   ├── note-id.js             # 跨设备唯一笔记 ID
 │   ├── note-format.js         # Markdown/frontmatter 序列化
 │   ├── search.js              # MiniSearch 索引
+│   ├── filter-stats.js        # 分类/标签筛选统计
+│   ├── gestures.js            # 滑动、长按、详情翻页手势
 │   ├── sync.js                # WebDAV 同步引擎
 │   ├── crypto.js              # 主密码和密钥加密
 │   ├── ai.js                  # BYOK AI 配置与任务调用
@@ -163,12 +172,25 @@ ai:
 │   ├── rag.js                 # 问砚 RAG 查询与回答
 │   ├── curator.js             # 标签整理建议
 │   ├── export-screenshot.js   # 洞察长图导出
-│   ├── screen-*.jsx           # 各页面
-│   └── settings-*.jsx         # 设置页拆分组件
+│   ├── tag-colors.js          # 标签颜色与分类词典
+│   ├── screen-capture.jsx     # 首页捕获
+│   ├── screen-list.jsx        # 笔记本、筛选、同步入口
+│   ├── screen-detail.jsx      # 详情、编辑、翻页
+│   ├── screen-search.jsx      # 全文搜索
+│   ├── screen-tags.jsx        # 标签管理
+│   ├── screen-trash.jsx       # 回收站
+│   ├── screen-yan.jsx         # 洞察与问砚
+│   ├── screen-settings*.jsx   # 设置页及子页面
+│   └── settings-*.jsx         # 设置页通用组件与安全弹层
 ├── tests/
-│   └── export-screenshot.test.mjs
+│   ├── detail-menu-layer.test.mjs
+│   ├── export-screenshot.test.mjs
+│   ├── note-format.test.mjs
+│   ├── personalization-removal.test.mjs
+│   └── webdav-proxy-config.test.mjs
 └── docs/
-    └── specs、superpowers     # 产品规格与实现计划
+    ├── specs/                 # 产品规格
+    └── superpowers/           # 实现计划
 ```
 
 ## 部署
@@ -180,8 +202,8 @@ ai:
 - 生产环境需要 HTTPS。
 - `vite.config.js` 使用 `base: './'`，适合部署到子路径；本地开发和 `vite preview` 还会挂载 WebDAV 同源代理。
 - `index.html` 的 CSP 允许 `connect-src 'self' https:`，AI 和 WebDAV endpoint 需要使用 HTTPS。
-- 静态托管必须能正确提供 `manifest.webmanifest`、`sw.js` 和 `assets/*`。
-- 纯静态托管无法替第三方 WebDAV 补 CORS。生产环境若要支持坚果云等服务，需要在同一域名下配置 `/dav/<encoded-server>/...` 反向代理。
+- 静态托管必须能正确提供 `manifest.webmanifest`、`sw.js`、PWA 图标和 `assets/*`。
+- 纯静态托管无法替第三方 WebDAV 补 CORS。生产环境若要支持坚果云等服务，需要在同一域名下配置 `/dav/<encoded-server>/...` 反向代理，并确保该路径不被 Service Worker 或 CDN 缓存。
 
 ## 许可
 

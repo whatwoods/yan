@@ -397,11 +397,11 @@ export async function pullPreferences() {
 /**
  * Push a conflict copy to /yan/conflicts/<id>.md
  */
-export async function pushConflict(note) {
+export async function pushConflict(note, variant = 'note') {
   if (!client) return;
   try { await client.createDirectory(root('/conflicts'), { recursive: true }); } catch {}
   const md = serialize(note);
-  await client.putFileContents(root(`/conflicts/${note.id}.md`), md, { overwrite: true });
+  await client.putFileContents(root(`/conflicts/${variant}-${note.modified || Date.now()}-${note.id}.md`), md, { overwrite: true });
 }
 
 // ── Main sync ─────────────────────────────────────────────────
@@ -445,8 +445,8 @@ export async function syncAll(localNotes, extra = {}) {
           if (lastSynced && localMod > new Date(lastSynced).getTime()) {
             // Conflict: save both versions
             conflicts.push({ local, remote });
-            await pushConflict(local);
-            await pushConflict(remote);
+            await pushConflict(local, 'local');
+            await pushConflict(remote, 'remote');
           } else {
             await putNote(remote);
             upserted.push(remote);
