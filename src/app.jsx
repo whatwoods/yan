@@ -29,6 +29,23 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [autoExpandInput, setAutoExpandInput] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const appRef = useRef(null);
+
+  // ── Keyboard-aware viewport height ─────────────────────────
+  useEffect(() => {
+    const el = appRef.current;
+    if (!el || !window.visualViewport) return;
+    const update = () => {
+      el.style.setProperty('--app-height', window.visualViewport.height + 'px');
+    };
+    update();
+    window.visualViewport.addEventListener('resize', update);
+    window.visualViewport.addEventListener('scroll', update);
+    return () => {
+      window.visualViewport.removeEventListener('resize', update);
+      window.visualViewport.removeEventListener('scroll', update);
+    };
+  }, []);
 
   // PWA install prompt
   useEffect(() => {
@@ -243,7 +260,7 @@ export function App() {
 
   return (
     <ToastHost>
-      <div className="app">
+      <div className="app" ref={appRef}>
         {route === 'capture' && (
           <CaptureScreen
             notes={notes}
