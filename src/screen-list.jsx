@@ -6,7 +6,6 @@ import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, KindBadge, ScrHead, showToast, PopoverMenu } from './components.jsx';
 import { Store } from './store.jsx';
 import { getMeta, setMeta } from './db.js';
-import { initWebDAV, syncAll } from './sync.js';
 import { useSwipeActions, useLongPress } from './gestures.js';
 import { buildFilterStats, getTagsForCategory } from './filter-stats.js';
 
@@ -303,6 +302,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
     try {
       const savedWebdav = await getMeta('webdavConfig');
       if (savedWebdav?.server && savedWebdav?.username) {
+        const { initWebDAV, syncAll } = await import('./sync.js');
         initWebDAV(savedWebdav);
         const allNotes = Store.getAllCachedNotes();
         const cats = categories.length ? categories : await Store.getCategories();

@@ -11,7 +11,7 @@ self.addEventListener('install', (e) => {
       fetch('./index.html').then((res) => {
         if (res.ok) {
           return res.clone().text().then((html) => {
-            const assetUrls = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)]
+            const assetUrls = [...html.matchAll(/(?:src|href)="((?:\.\/|\/)assets\/[^"]+)"/g)]
               .map((m) => m[1]);
             return cache.addAll([...PRECACHE, ...assetUrls]).then(() => res);
           });

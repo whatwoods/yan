@@ -57,7 +57,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, onExport, onCl
   }, []);
 
   const deletedCount = useMemo(() =>
-    Store.getAllNotesWithDeleted().filter((n) => n.deleted_at).length, []
+    Store.getAllCachedNotes().filter((n) => n.deleted_at).length, []
   );
 
   // ── Master password handlers ────────────────────────────────

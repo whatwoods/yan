@@ -1,7 +1,7 @@
 // screen-yan.jsx — 砚: insights main + chat overlay (FAB).
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { TOKENS, PERSONAS } from './tokens.jsx';
+import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
@@ -12,9 +12,8 @@ import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCura
 import { askYanRAG } from './rag.js';
 import { downloadElementLongScreenshot } from './export-screenshot.js';
 
-export function YanScreen({ notes, onNavigate }) {
+export function YanScreen({ notes, persona, onNavigate }) {
   const T = TOKENS, I = ICONS;
-  const persona = PERSONAS.yan;
   const [chatOpen, setChatOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const insightExportRef = useRef(null);
@@ -77,7 +76,7 @@ export function YanScreen({ notes, onNavigate }) {
         {showMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 19 }} onClick={() => setShowMenu(false)} />}
       </div>
 
-      <YanInsightBody notes={notes} categories={categories} existingTags={existingTags} exportRef={insightExportRef} />
+      <YanInsightBody notes={notes} categories={categories} existingTags={existingTags} exportRef={insightExportRef} persona={persona} />
 
       {/* FAB to open chat */}
       {!chatOpen && (
@@ -121,7 +120,7 @@ export function YanScreen({ notes, onNavigate }) {
                 <I.close size={20} />
               </button>
             </div>
-            <YanChatBody notes={notes} categories={categories} existingTags={existingTags} />
+            <YanChatBody notes={notes} categories={categories} existingTags={existingTags} persona={persona} />
           </div>
         </>
       )}
@@ -129,9 +128,8 @@ export function YanScreen({ notes, onNavigate }) {
   );
 }
 
-function YanInsightBody({ notes, categories, exportRef }) {
+function YanInsightBody({ notes, categories, exportRef, persona }) {
   const T = TOKENS, I = ICONS;
-  const persona = PERSONAS.yan;
 
   const stats = useMemo(() => computeStats(notes), [notes]);
 
@@ -207,14 +205,9 @@ function YanInsightBody({ notes, categories, exportRef }) {
 
   const handleApplyCurator = useCallback(async (suggestion) => {
     await applyCuratorSuggestion(suggestion, notes, async (id, patch) => {
-      // updateFn is called for each note that needs updating
-      // The parent will refresh notes from store
-      const { Store } = await import('./store.jsx');
       await Store.updateNote(id, patch);
     });
     setCuratorSuggestions(prev => prev.filter(s => s !== suggestion));
-    // Trigger a page-level refresh by dispatching a custom event
-    window.dispatchEvent(new CustomEvent('notes-updated'));
   }, [notes]);
 
   const handleRejectCurator = useCallback(async (suggestion) => {
@@ -458,9 +451,8 @@ function YanInsightBody({ notes, categories, exportRef }) {
   );
 }
 
-function YanChatBody({ notes, categories, existingTags }) {
+function YanChatBody({ notes, categories, existingTags, persona }) {
   const T = TOKENS, I = ICONS;
-  const persona = PERSONAS.yan;
   const [messages, setMessages] = useState([
     {
       role: 'assistant',

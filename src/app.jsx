@@ -1,7 +1,7 @@
 // app.jsx — main React shell, routing, global state.
 
-import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
-import { TOKENS } from './tokens.jsx';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, useSyncExternalStore } from 'react';
+import { TOKENS, PERSONAS } from './tokens.jsx';
 import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
@@ -19,7 +19,8 @@ const SyncSettingsScreen = React.lazy(() => import('./screen-settings-sync.jsx')
 const CategoriesSettingsScreen = React.lazy(() => import('./screen-settings-categories.jsx').then(m => ({ default: m.CategoriesSettingsScreen })));
 
 export function App() {
-  const [notes, setNotes] = useState([]);
+  const notes = useSyncExternalStore(Store.subscribe, Store.getNotes);
+  const persona = PERSONAS.yan;
   const [settings, setSettings] = useState(() => Store.loadSettings());
   const [route, setRoute] = useState('capture');
   const [showSetupHint, setShowSetupHint] = useState(() => Store.isFirstRun());
@@ -67,7 +68,6 @@ export function App() {
         const [aiConfig, assignment] = await Promise.all([getAIConfig(), getModelAssignment()]);
         if (cancelled) return;
         const ready = isAIConfigured(aiConfig, assignment);
-        setNotes(Store.getNotes());
         setSettings(Store.loadSettings());
         setAiConfigured(ready);
         if (ready) {
@@ -107,7 +107,6 @@ export function App() {
     };
 
     const addedNote = await Store.addNote(note);
-    setNotes(Store.getNotes());
     showToast('已收');
 
     // AI processing with 1.5s debounce
@@ -126,19 +125,17 @@ export function App() {
           people: extractPeople(body),
         });
       }
-      setNotes(Store.getNotes());
+
       showToast('砚已识其要意');
     }, 1500);
   }, [settings.autoTag, showSetupHint]);
 
   const updateNote = useCallback(async (id, patch) => {
     await Store.updateNote(id, patch);
-    setNotes(Store.getNotes());
   }, []);
 
   const deleteNote = useCallback(async (id) => {
     await Store.softDelete(id);
-    setNotes(Store.getNotes());
     showToast('已移入回收站');
   }, []);
 
@@ -176,22 +173,23 @@ export function App() {
   // ── Settings actions ─────────────────────────────────────
   const onResetSeed = async () => {
     if (!confirm('用示例数据覆盖当前所有笔记？')) return;
-    // Clear IndexedDB and re-seed
     const all = Store.getAllCachedNotes();
-    for (const n of all) {
-      await Store.permanentDelete(n.id);
-    }
-    await Store.init();
-    setNotes(Store.getNotes());
+    await Store.batch(async () => {
+      for (const n of all) {
+        await Store.permanentDelete(n.id);
+      }
+      await Store.init();
+    });
     showToast('已重置');
   };
   const onClearAll = async () => {
     if (!confirm('清空全部笔记？此操作不可撤销。')) return;
     const all = Store.getAllCachedNotes();
-    for (const n of all) {
-      await Store.permanentDelete(n.id);
-    }
-    setNotes(Store.getNotes());
+    await Store.batch(async () => {
+      for (const n of all) {
+        await Store.permanentDelete(n.id);
+      }
+    });
     showToast('已清空');
   };
   const onExport = () => {
@@ -305,6 +303,7 @@ export function App() {
           {route === 'yan' && (
             <YanScreen
               notes={notes}
+              persona={persona}
               onNavigate={setRoute}
             />
           )}
@@ -341,7 +340,6 @@ export function App() {
           {route === 'trash' && (
             <TrashScreen
               onBack={() => setRoute('settings')}
-              onRefresh={() => setNotes(Store.getNotes())}
             />
           )}
           {route === 'settings-ai' && (

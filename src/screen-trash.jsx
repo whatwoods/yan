@@ -1,34 +1,24 @@
 // screen-trash.jsx — Trash (回收站) screen for soft-deleted notes.
 
-import React, { useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { ScrHead, showToast } from './components.jsx';
 import { Store } from './store.jsx';
 
-export function TrashScreen({ onBack, onRefresh }) {
+export function TrashScreen({ onBack }) {
   const T = TOKENS, I = ICONS;
 
-  const [deleted, setDeleted] = useState(() =>
-    Store.getAllNotesWithDeleted().filter((n) => n.deleted_at)
-  );
-
-  function refresh() {
-    setDeleted(Store.getAllNotesWithDeleted().filter((n) => n.deleted_at));
-  }
+  const deleted = useSyncExternalStore(Store.subscribe, Store.getDeletedNotes);
 
   async function handleRestore(id) {
     await Store.restore(id);
-    refresh();
-    onRefresh?.();
     showToast('已还原');
   }
 
   async function handlePermanentDelete(id) {
     if (!window.confirm('永久删除此笔记？此操作不可撤销。')) return;
     await Store.permanentDelete(id);
-    refresh();
-    onRefresh?.();
     showToast('已永久删除');
   }
 

@@ -80,6 +80,46 @@ function seedNotes() {
 export const Store = {
   _notes: [],     // in-memory cache
   _settings: null,
+  _listeners: new Set(),
+  _notesVersion: 0,
+  _filterCache: {},
+  _batching: false,
+
+  subscribe(listener) {
+    Store._listeners.add(listener);
+    return () => Store._listeners.delete(listener);
+  },
+
+  _notify() {
+    if (Store._batching) return;
+    Store._listeners.forEach(l => l());
+  },
+
+  _touchNotes() {
+    Store._notesVersion += 1;
+    Store._notify();
+  },
+
+  async batch(work) {
+    const wasBatching = Store._batching;
+    Store._batching = true;
+    try {
+      return await work();
+    } finally {
+      Store._batching = wasBatching;
+      if (!wasBatching) Store._notify();
+    }
+  },
+
+  _getFiltered(key, predicate) {
+    const cache = Store._filterCache[key];
+    if (!cache || cache.version !== Store._notesVersion) {
+      const snapshot = Store._notes.filter(predicate);
+      Store._filterCache[key] = { version: Store._notesVersion, snapshot };
+      return snapshot;
+    }
+    return cache.snapshot;
+  },
 
   // ── Init (call once on app mount) ────────────────────────
   async init() {
@@ -106,9 +146,12 @@ export const Store = {
     const stale = Store._notes.filter(
       (n) => n.deleted_at && new Date(n.deleted_at).getTime() < cutoff
     );
-    for (const n of stale) {
-      await dbDeleteNote(n.id);
-      Store._notes = Store._notes.filter((x) => x.id !== n.id);
+    if (stale.length) {
+      const staleIds = new Set(stale.map((n) => n.id));
+      for (const n of stale) {
+        await dbDeleteNote(n.id);
+      }
+      Store._notes = Store._notes.filter((n) => !staleIds.has(n.id));
     }
 
     // 4. Initialize default categories if not present
@@ -132,6 +175,7 @@ export const Store = {
     Store._settings = settings;
     // Persist to IndexedDB for future reads
     await setMeta('settings', settings);
+    Store._touchNotes();
 
     return Store._notes;
   },
@@ -143,21 +187,15 @@ export const Store = {
    * This is the primary read method — synchronous, fast.
    */
   getNotes() {
-    return Store._notes.filter((n) => !n.deleted_at);
+    return Store._getFiltered('visible', (n) => !n.deleted_at);
   },
 
-  /**
-   * Return ALL notes (including soft-deleted) from cache.
-   */
   getAllCachedNotes() {
     return Store._notes;
   },
 
-  /**
-   * Return all notes including soft-deleted ones (alias for trash screen).
-   */
-  getAllNotesWithDeleted() {
-    return Store._notes;
+  getDeletedNotes() {
+    return Store._getFiltered('deleted', (n) => !!n.deleted_at);
   },
 
   // ── Notes CRUD (async, writes to IndexedDB + cache) ─────
@@ -192,6 +230,7 @@ export const Store = {
     }
     Store._notes.unshift(fullNote);
     addNoteToIndex(fullNote);
+    Store._touchNotes();
     return fullNote;
   },
 
@@ -214,6 +253,7 @@ export const Store = {
     }
     Store._notes[idx] = updated;
     updateNoteInIndex(updated);
+    Store._touchNotes();
     return updated;
   },
 
@@ -222,6 +262,7 @@ export const Store = {
     await dbDeleteNote(id);
     Store._notes = Store._notes.filter((n) => n.id !== id);
     removeNoteFromIndex(id);
+    Store._touchNotes();
   },
 
   /**
@@ -251,16 +292,20 @@ export const Store = {
    */
   applySyncResult(result) {
     if (!result.upserted || result.upserted.length === 0) return;
+    let changed = false;
     for (const remote of result.upserted) {
       const idx = Store._notes.findIndex((n) => n.id === remote.id);
       if (idx !== -1) {
         Store._notes[idx] = remote;
         updateNoteInIndex(remote);
+        changed = true;
       } else {
         Store._notes.push(remote);
         addNoteToIndex(remote);
+        changed = true;
       }
     }
+    if (changed) Store._touchNotes();
   },
 
   // ── Settings ────────────────────────────────────────────
