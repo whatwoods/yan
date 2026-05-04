@@ -1,6 +1,6 @@
 // components.jsx — Shared visual primitives: SealStamp, BrushTitle, Tag, BottomNav, Toast, KindBadge.
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ICONS } from './icons.jsx';
 
 export function SealStamp({ text = '砚', size = 36, rotate = -6, color }) {
@@ -87,6 +87,61 @@ export function ToastHost({ children }) {
       {children}
       {msg && <div className="toast" role="status" aria-live="polite">{msg}</div>}
     </>
+  );
+}
+
+export function FullscreenTextEditor({
+  title = '全屏编辑',
+  meta,
+  value,
+  onChange,
+  onClose,
+  onSave,
+  saveLabel = '收',
+  saveDisabled = false,
+  placeholder = '此处落笔…',
+}) {
+  const I = ICONS;
+  const taRef = useRef(null);
+
+  useEffect(() => {
+    const id = setTimeout(() => taRef.current?.focus({ preventScroll: true }), 80);
+    return () => clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !saveDisabled) onSave();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, onSave, saveDisabled]);
+
+  return (
+    <div className="full-editor-backdrop" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="full-editor-panel paper">
+        <div className="full-editor-head">
+          <button className="icon-btn" onClick={onClose} aria-label="退出全屏">
+            <I.collapse size={20} />
+          </button>
+          <div className="full-editor-title">
+            <strong>{title}</strong>
+            {meta && <span>{meta}</span>}
+          </div>
+          <button className="btn-primary" onClick={onSave} disabled={saveDisabled}>
+            {saveLabel}
+          </button>
+        </div>
+        <textarea
+          ref={taRef}
+          className="full-editor-textarea"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+      </div>
+    </div>
   );
 }
 

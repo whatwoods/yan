@@ -5,7 +5,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { TOKENS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, showToast } from './components.jsx';
+import { SealStamp, Tag, showToast, FullscreenTextEditor } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 
 export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
@@ -16,6 +16,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
   const [showMore, setShowMore] = useState(false);
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [isFullEditor, setFullEditor] = useState(false);
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
@@ -36,6 +37,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
       summary: autoSummary(body),
       tags: autoTags(body),
     });
+    setFullEditor(false);
     setEditing(false);
     showToast('已收');
   }
@@ -55,7 +57,11 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
   return (
     <div className="screen paper">
       {/* Top bar */}
-      <div className="detail-head" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div
+        className="detail-head"
+        aria-hidden={isFullEditor ? 'true' : undefined}
+        style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}
+      >
         <button className="icon-btn" onClick={onBack} aria-label="返回"><I.back size={22} /></button>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', position: 'relative' }}>
           <button className="icon-btn" onClick={togglePin} aria-label="钉住"
@@ -84,7 +90,11 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
         </div>
       </div>
 
-      <div className="scroll" style={{ flex: 1, padding: '4px 24px 24px' }}>
+      <div
+        className="scroll"
+        aria-hidden={isFullEditor ? 'true' : undefined}
+        style={{ flex: 1, padding: '4px 24px 24px' }}
+      >
         {/* Meta */}
         <div className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)', marginBottom: 8, letterSpacing: '.06em' }}>
           {fullDate(note.createdAt)} · {kindLabel(note.kind)}
@@ -157,14 +167,21 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
               autoFocus
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              className="detail-editor-textarea"
               style={{
-                width: '100%', minHeight: 220, border: `1px solid var(--fold)`,
+                width: '100%', border: `1px solid var(--fold)`,
                 background: 'var(--paper-light)', borderRadius: 12, padding: 14,
                 fontFamily: T.fontSerif, fontSize: 16, color: 'var(--ink)',
-                lineHeight: 1.85, outline: 'none', resize: 'vertical',
+                lineHeight: 1.85, outline: 'none',
               }}
             />
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="icon-btn" onClick={() => setFullEditor(true)} aria-label="全屏编辑">
+                <I.expand size={19} />
+              </button>
+              <span className="mono" style={{ marginRight: 'auto', fontSize: 11, color: 'var(--ink-fade)' }}>
+                {body.length} 字
+              </span>
               <button className="btn-ghost" onClick={() => { setBody(note.body); setEditing(false); }}>取消</button>
               <button className="btn-primary" onClick={saveEdit}>收</button>
             </div>
@@ -246,6 +263,17 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
           )}
         </div>
       </div>
+
+      {isFullEditor && (
+        <FullscreenTextEditor
+          title="编辑笔记"
+          meta={`${body.length} 字`}
+          value={body}
+          onChange={setBody}
+          onClose={() => setFullEditor(false)}
+          onSave={saveEdit}
+        />
+      )}
 
       {/* Category picker sheet */}
       {showCatPicker && (

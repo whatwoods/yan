@@ -24,6 +24,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   const [aiModels, setAiModels] = useState([]);
   const [modelAssignment, setModelAssignment] = useState({ classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '' });
   const [showProviderPicker, setShowProviderPicker] = useState(false);
+  const [showDefaultModelPicker, setShowDefaultModelPicker] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(null); // task key or null
 
   // WebDAV config state
@@ -432,18 +433,13 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
                 onClick={aiTesting ? undefined : handleAiTest}
               />
               {aiModels.length > 0 && (
-                <div style={{ padding: '8px 14px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 6, fontFamily: T.fontSerif }}>
-                    默认模型
-                  </div>
-                  <select
-                    value={aiConfig.defaultModel}
-                    onChange={(e) => saveAiConfig({ ...aiConfig, defaultModel: e.target.value })}
-                    style={{ ...inputStyle(T), width: '100%' }}
-                  >
-                    {aiModels.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
+                <Row
+                  icon={<I.bolt size={14} />}
+                  label="默认模型"
+                  value={aiConfig.defaultModel || '未设置'}
+                  onClick={() => setShowDefaultModelPicker(true)}
+                  last
+                />
               )}
             </>
           )}
@@ -670,6 +666,18 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
             setShowProviderPicker(false);
           }}
           onClose={() => setShowProviderPicker(false)}
+        />
+      )}
+      {showDefaultModelPicker && (
+        <PickerSheet
+          title="默认模型"
+          options={aiModels.map(m => ({ value: m, label: m, hint: '用于未单独指定的任务' }))}
+          current={aiConfig.defaultModel}
+          onSelect={(val) => {
+            saveAiConfig({ ...aiConfig, defaultModel: val });
+            setShowDefaultModelPicker(false);
+          }}
+          onClose={() => setShowDefaultModelPicker(false)}
         />
       )}
       {showModelPicker && (

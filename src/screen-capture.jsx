@@ -1,10 +1,10 @@
 // screen-capture.jsx — Home screen. Default omnibox (per chat: 全能输入).
 // Three states: idle (small bar) → text (expanded textarea) → recording (live waveform inline).
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { TOKENS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, BrushTitle, Tag, showToast } from './components.jsx';
+import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor } from './components.jsx';
 import { Store } from './store.jsx';
 import { getAIConfig } from './ai.js';
 
@@ -39,15 +39,83 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
   const [photoData, setPhotoData] = useState(null);
   const [recordingStart, setRecordingStart] = useState(0);
   const [categories, setCategories] = useState([]);
+  const [isFullEditor, setFullEditor] = useState(false);
 
   const taRef = useRef(null);
+  const omniboxRef = useRef(null);
   const recRef = useRef(null);
   const photoInputRef = useRef(null);
   const filePickerRef = useRef(null);
+  const focusAfterExpandRef = useRef(false);
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
   }, []);
+
+  function setCaptureMode(nextMode, options = {}) {
+    const el = omniboxRef.current;
+    const reduceMotion = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (el && mode !== nextMode && !reduceMotion) {
+      el.dataset.fromHeight = String(el.getBoundingClientRect().height);
+    }
+    focusAfterExpandRef.current = Boolean(options.focusText);
+    setMode(nextMode);
+  }
+
+  useLayoutEffect(() => {
+    const el = omniboxRef.current;
+    const from = el?.dataset.fromHeight;
+    if (!el || !from) return;
+
+    delete el.dataset.fromHeight;
+    const startHeight = Number(from);
+    const endHeight = el.scrollHeight;
+    if (!Number.isFinite(startHeight) || Math.abs(endHeight - startHeight) < 1) return;
+
+    el.style.height = `${startHeight}px`;
+    el.style.overflow = 'hidden';
+    el.style.transition = 'none';
+    el.getBoundingClientRect();
+
+    requestAnimationFrame(() => {
+      el.style.transition = 'height .34s cubic-bezier(.2, .85, .18, 1), border-radius .28s ease, padding .28s ease, border-color .2s ease, box-shadow .28s ease';
+      el.style.height = `${endHeight}px`;
+    });
+
+    const onTransitionEnd = (event) => {
+      if (event.target !== el || event.propertyName !== 'height') return;
+      el.style.height = '';
+      el.style.overflow = '';
+      el.style.transition = '';
+      el.removeEventListener('transitionend', onTransitionEnd);
+    };
+    el.addEventListener('transitionend', onTransitionEnd);
+
+    return () => {
+      el.removeEventListener('transitionend', onTransitionEnd);
+    };
+  }, [mode]);
+
+  useLayoutEffect(() => {
+    if (mode !== 'text' || isFullEditor) return;
+    const ta = taRef.current;
+    if (!ta) return;
+
+    const minHeight = text.length > 180 || photoData ? 156 : 108;
+    const maxHeight = Math.min(window.innerHeight * 0.42, 340);
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(Math.max(ta.scrollHeight, minHeight), maxHeight)}px`;
+  }, [mode, text, photoData, isFullEditor]);
+
+  useEffect(() => {
+    if (mode !== 'text' || !focusAfterExpandRef.current || isFullEditor) return;
+    const id = setTimeout(() => {
+      taRef.current?.focus({ preventScroll: true });
+      focusAfterExpandRef.current = false;
+    }, 140);
+    return () => clearTimeout(id);
+  }, [mode, isFullEditor]);
 
   // ── Recording (Web Speech API for transcription, MediaRecorder fallback). ───
   useEffect(() => {
@@ -61,7 +129,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
   const audioChunksRef = useRef([]);
 
   function startRecording() {
-    setMode('recording');
+    setCaptureMode('recording');
     setRecordingStart(Date.now());
     setInterim('');
 
@@ -97,7 +165,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
         mediaRecorderRef.current = mr;
       }).catch(() => {
         showToast('无法访问麦克风');
-        setMode('idle');
+        setCaptureMode('idle');
       });
     }
   }
@@ -156,8 +224,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     }
 
     setInterim('');
-    setMode(text.trim() ? 'text' : 'idle');
-    setTimeout(() => taRef.current?.focus(), 50);
+    setCaptureMode(text.trim() ? 'text' : 'idle', { focusText: Boolean(text.trim()) });
   }
 
   function cancelRecording() {
@@ -174,12 +241,11 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     }
     audioChunksRef.current = [];
     setInterim('');
-    setMode('idle');
+    setCaptureMode('idle');
   }
 
   function expandToText() {
-    setMode('text');
-    setTimeout(() => taRef.current?.focus(), 30);
+    setCaptureMode('text', { focusText: true });
   }
 
   async function handlePhoto(e) {
@@ -230,7 +296,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     setText('');
     setInterim('');
     setPhotoData(null);
-    setMode('idle');
+    setFullEditor(false);
+    setCaptureMode('idle');
     cancelRecording();
   }
 
@@ -341,17 +408,20 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
       )}
 
       {/* Omnibox */}
-      <div style={{
+      <div
+        ref={omniboxRef}
+        className="capture-omnibox"
+        data-mode={mode}
+        style={{
         margin: '14px 16px 0',
         background: 'var(--paper-light)',
         border: `1px solid ${mode === 'recording' ? 'var(--seal)' : 'var(--fold)'}`,
         borderRadius: mode === 'idle' ? 999 : 22,
         padding: mode === 'idle' ? '6px 6px 6px 18px' : '12px 12px 10px',
         boxShadow: 'var(--shadow)',
-        transition: 'border-radius .2s, padding .2s, border-color .2s',
       }}>
         {mode === 'idle' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div className="capture-idle-row" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <div onClick={expandToText}
               style={{ flex: 1, fontFamily: T.fontSerif, fontSize: 15, color: 'var(--ink-fade)', padding: '8px 0' }}>
               此处落笔…
@@ -372,7 +442,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
         )}
 
         {mode === 'text' && (
-          <>
+          <div className="capture-editor-panel">
             {photoData && (
               <div style={{ position: 'relative', marginBottom: 8 }}>
                 <img src={photoData} alt="附图"
@@ -391,19 +461,19 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
             )}
             <textarea
               ref={taRef}
-              autoFocus
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="此处落笔…"
+              className="capture-textarea"
               style={{
-                width: '100%', minHeight: 92, border: 'none', outline: 'none',
+                width: '100%', border: 'none', outline: 'none',
                 background: 'transparent', resize: 'none',
                 fontFamily: T.fontSerif, fontSize: 16, color: 'var(--ink)',
                 lineHeight: 1.65, padding: '4px 4px 8px',
               }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button className="icon-btn" onClick={() => { setText(''); setPhotoData(null); setMode('idle'); }} aria-label="折叠">
+            <div className="capture-editor-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="icon-btn" onClick={() => { setText(''); setPhotoData(null); setFullEditor(false); setCaptureMode('idle'); }} aria-label="折叠">
                 <I.close size={18} />
               </button>
               <button className="icon-btn" onClick={() => photoInputRef.current?.click()} aria-label="加图">
@@ -411,6 +481,9 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
               </button>
               <button className="icon-btn" onClick={() => filePickerRef.current?.click()} aria-label="附件">
                 <I.clip size={20} />
+              </button>
+              <button className="icon-btn" onClick={() => setFullEditor(true)} aria-label="全屏编辑">
+                <I.expand size={19} />
               </button>
               <span style={{
                 marginLeft: 4, fontSize: 11, color: 'var(--ink-fade)',
@@ -431,11 +504,11 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
                 收
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {mode === 'recording' && (
-          <>
+          <div className="capture-editor-panel">
             <div style={{
               minHeight: 92, padding: '4px 4px 10px',
               fontFamily: T.fontSerif, fontSize: 16, color: 'var(--ink-soft)', lineHeight: 1.65,
@@ -472,7 +545,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
                 <span style={{ width: 12, height: 12, background: '#fff', borderRadius: 2 }} />
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
 
@@ -483,6 +556,18 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
       }}>
         自动保存 · 砚会在后台为你识其要意
       </div>
+
+      {isFullEditor && (
+        <FullscreenTextEditor
+          title="全屏落笔"
+          meta={`${text.length} 字`}
+          value={text}
+          onChange={setText}
+          onClose={() => setFullEditor(false)}
+          onSave={save}
+          saveDisabled={!text.trim() && !photoData}
+        />
+      )}
 
       {/* Hidden file inputs */}
       <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
@@ -514,4 +599,3 @@ function dateLine() {
   const wd = '日一二三四五六'[d.getDay()];
   return `${md} · 周${wd}`;
 }
-
