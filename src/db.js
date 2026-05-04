@@ -151,6 +151,14 @@ export async function clearSyncQueue() {
   await tx.done;
 }
 
+/**
+ * Remove a single sync queue item by id.
+ */
+export async function removeSyncQueueItem(id) {
+  const db = await getDB();
+  return db.delete('sync_queue', id);
+}
+
 // ── Device fingerprint ───────────────────────────────────────
 
 /**

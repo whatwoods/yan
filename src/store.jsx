@@ -4,7 +4,6 @@
 import {
   getAllNotes, putNote, deleteNote as dbDeleteNote,
   getMeta, setMeta,
-  enqueueSync, getSyncQueue, clearSyncQueue,
   getDeviceFingerprint,
 } from './db.js';
 import { migrate } from './migrate.js';
@@ -112,35 +111,7 @@ export const Store = {
       Store._notes = Store._notes.filter((x) => x.id !== n.id);
     }
 
-    // 4. Drain sync queue: retry any pending writes
-    try {
-      const queue = await getSyncQueue();
-      if (queue.length > 0) {
-        let allSucceeded = true;
-        for (const item of queue) {
-          if (item.action === 'upsert' && item.data) {
-            try {
-              await putNote(item.data);
-            } catch (e) {
-              console.warn('[store] 队列项恢复失败:', e);
-              allSucceeded = false;
-            }
-          }
-        }
-        if (allSucceeded) {
-          await clearSyncQueue();
-          await setMeta('syncStatus', 'synced');
-        }
-      } else {
-        // No pending queue — only set synced if not already in error state
-        const currentStatus = await getMeta('syncStatus');
-        if (!currentStatus) await setMeta('syncStatus', 'synced');
-      }
-    } catch (err) {
-      console.error('Failed to drain sync queue:', err);
-    }
-
-    // 5. Initialize default categories if not present
+    // 4. Initialize default categories if not present
     const cats = await getMeta('categories');
     if (!cats) {
       await setMeta('categories', DEFAULT_CATEGORIES);
@@ -217,9 +188,7 @@ export const Store = {
     try {
       await putNote(fullNote);
     } catch (err) {
-      console.error('putNote failed, enqueuing:', err);
-      await enqueueSync({ action: 'upsert', note_id: fullNote.id, data: fullNote });
-      await setMeta('syncStatus', 'pending');
+      console.error('putNote failed:', err);
     }
     Store._notes.unshift(fullNote);
     addNoteToIndex(fullNote);
@@ -241,9 +210,7 @@ export const Store = {
     try {
       await putNote(updated);
     } catch (err) {
-      console.error('putNote failed, enqueuing:', err);
-      await enqueueSync({ action: 'upsert', note_id: id, data: updated });
-      await setMeta('syncStatus', 'pending');
+      console.error('putNote failed:', err);
     }
     Store._notes[idx] = updated;
     updateNoteInIndex(updated);
@@ -276,6 +243,24 @@ export const Store = {
    */
   async permanentDelete(id) {
     return Store.deleteNote(id);
+  },
+
+  /**
+   * Apply sync results to the in-memory cache and search index.
+   * Call this after syncAll to make remote changes visible in the UI.
+   */
+  applySyncResult(result) {
+    if (!result.upserted || result.upserted.length === 0) return;
+    for (const remote of result.upserted) {
+      const idx = Store._notes.findIndex((n) => n.id === remote.id);
+      if (idx !== -1) {
+        Store._notes[idx] = remote;
+        updateNoteInIndex(remote);
+      } else {
+        Store._notes.push(remote);
+        addNoteToIndex(remote);
+      }
+    }
   },
 
   // ── Settings ────────────────────────────────────────────

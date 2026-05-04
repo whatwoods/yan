@@ -30,8 +30,16 @@ export function getTrashPath(noteId, root = '/yan') {
   return `${root}/trash/${safe}.md`;
 }
 
-export function getAttachmentPath(noteId, filename) {
-  return `/yan/attachments/${sanitizeId(noteId)}/${sanitizeId(filename)}`;
+export function getAttachmentPath(noteId, filename, root = '/yan') {
+  return `${root}/attachments/${sanitizeId(noteId)}/${sanitizeId(filename)}`;
+}
+
+// ── Photo helpers ────────────────────────────────────────────
+
+function extractPhotoFilename(photo) {
+  if (!photo) return null;
+  if (!photo.startsWith('data:')) return photo;
+  return 'photo-1.jpg';
 }
 
 // ── Serialize ────────────────────────────────────────────────
@@ -53,8 +61,12 @@ export function serialize(note) {
     people: note.people || [],
     pinned: note.pinned || false,
     attachments: note.attachments || [],
-    photo: note.photo || null,
+    photo: extractPhotoFilename(note.photo),
   };
+
+  if (fm.photo && !fm.attachments.includes(fm.photo)) {
+    fm.attachments = [...fm.attachments, fm.photo];
+  }
 
   // Only include deleted_at if note is soft-deleted
   if (note.deleted_at) {

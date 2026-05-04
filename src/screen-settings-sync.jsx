@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { showToast } from './components.jsx';
-import { Store, DEFAULT_CATEGORIES, addNoteToIndex, updateNoteInIndex } from './store.jsx';
+import { Store, DEFAULT_CATEGORIES } from './store.jsx';
 import { initWebDAV, testConnection, syncAll } from './sync.js';
 import { SecretsStore } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
@@ -101,18 +101,7 @@ export function SyncSettingsScreen({ onBack, settings }) {
         insights,
         preferences: settings,
       });
-      if (result.upserted && result.upserted.length > 0) {
-        for (const remote of result.upserted) {
-          const idx = Store._notes.findIndex((n) => n.id === remote.id);
-          if (idx !== -1) {
-            Store._notes[idx] = remote;
-            updateNoteInIndex(remote);
-          } else {
-            Store._notes.push(remote);
-            addNoteToIndex(remote);
-          }
-        }
-      }
+      Store.applySyncResult(result);
       const syncNow = new Date().toISOString();
       await setMeta('lastSync', syncNow);
       setWebdavStatus({ lastSync: syncNow, syncing: false, conflicts: result.conflicts.length });

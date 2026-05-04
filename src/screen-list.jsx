@@ -98,6 +98,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
           showToast('同步失败 · 请检查 WebDAV 配置');
         } else {
           await setMeta('lastSync', new Date().toISOString());
+          Store.applySyncResult(result);
           showToast('已同步');
           if (result.conflicts.length > 0) {
             setConflictCount(result.conflicts.length);
