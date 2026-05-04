@@ -46,15 +46,35 @@ export function extractPeople(body) {
   return [...set];
 }
 
+function aggregateTagData(allNotes) {
+  const tagCounts = {};
+  const peopleSet = new Set();
+  for (const n of allNotes) {
+    for (const t of (n.tags || [])) {
+      const label = typeof t === 'string' ? t : t.label;
+      tagCounts[label] = (tagCounts[label] || 0) + 1;
+    }
+    for (const p of (n.people || [])) {
+      peopleSet.add(p);
+    }
+  }
+  const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  return { sortedTags, people: [...peopleSet] };
+}
+
 /**
  * Run AI classify/tag/summarize pipeline on a note.
+ * @param {object} note
+ * @param {Array} categories
+ * @param {Array} [allNotes] — all user notes, used to extract existing tags/people for reuse hints
  * Returns a patch object or null (caller should fall back to rule-based).
  */
-export async function processNoteWithAI(note, categories) {
+export async function processNoteWithAI(note, categories, allNotes) {
   try {
+    const { sortedTags, people } = allNotes?.length ? aggregateTagData(allNotes) : { sortedTags: [], people: [] };
     const [category, tagResult, summary] = await Promise.all([
       classifyNote(note.body, categories),
-      extractTagsAndPeople(note.body, [], [], categories),
+      extractTagsAndPeople(note.body, sortedTags, people, categories),
       generateSummary(note.body),
     ]);
     return {

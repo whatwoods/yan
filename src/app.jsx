@@ -103,7 +103,7 @@ export function App() {
     // AI processing with 1.5s debounce
     setTimeout(async () => {
       const categories = await Store.getCategories();
-      const aiResult = await processNoteWithAI(addedNote, categories);
+      const aiResult = await processNoteWithAI(addedNote, categories, Store.getNotes());
       if (aiResult) {
         const patch = settings.autoTag ? aiResult : { ...aiResult, tags: addedNote.tags || [] };
         await Store.updateNote(addedNote.id, patch);

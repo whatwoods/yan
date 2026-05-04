@@ -172,7 +172,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, onExport, onCl
               ? `上次 ${new Date(webdavSummary.lastSync).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
               : (webdavSummary.configured ? '已配置' : '未配置')}
             onClick={() => onNavigate?.('settings-sync')} />
-          <Row icon={<I.pin size={14} />}
+          <Row icon={<I.lock size={14} />}
             label={masterPasswordSet ? '主密码' : '设置主密码'}
             value={masterPasswordSet ? (secretsUnlocked ? '已解锁' : '已锁定') : '未设置'}
             onClick={() => {
