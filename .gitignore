@@ -28,3 +28,6 @@ pnpm-debug.log*
 
 # Reference material (handoff bundle from Claude Design — kept locally for reference, not version-tracked)
 design_extracted/
+
+# Claude superpowers
+docs/superpowers/
