@@ -8,6 +8,7 @@ import { Store } from './store.jsx';
 import { getMeta, setMeta } from './db.js';
 import { initWebDAV, syncAll } from './sync.js';
 import { useSwipeActions, useLongPress } from './gestures.js';
+import { buildFilterStats, getTagsForCategory } from './filter-stats.js';
 
 // ── Simple virtual list for 100+ notes ────────────────────────
 const VIRTUAL_THRESHOLD = 100;
@@ -15,6 +16,9 @@ const ITEM_H_COMFY = 110;
 const ITEM_H_COMPACT = 80;
 const HEADER_H = 36;
 const BUFFER = 6;
+
+const TOP_CAT_COUNT = 5;
+const CONTEXT_TAG_COUNT = 6;
 
 function useVirtualList(flatItems, containerRef, itemHeight, disabled) {
   const [range, setRange] = useState({ start: 0, end: 30 });
@@ -54,12 +58,209 @@ function useVirtualList(flatItems, containerRef, itemHeight, disabled) {
   return disabled ? null : range;
 }
 
+// ── Filter drawer (bottom sheet) ──────────────────────────────
+function FilterDrawer({ open, onClose, categories, catFilter, onCatChange, tagFilter, onTagChange, sortedCatEntries, contextTags, globalTagCounts, tagsByCat }) {
+  const T = TOKENS, I = ICONS;
+  const [search, setSearch] = useState('');
+  const drawerRef = useRef(null);
+
+  // All tags for current category context
+  const allContextTags = useMemo(() => {
+    if (!catFilter || catFilter === '全部') {
+      return Object.entries(globalTagCounts)
+        .sort((a, b) => b[1].count - a[1].count)
+        .map(([label, v]) => ({ label, color: v.color, count: v.count }));
+    }
+    const catTags = tagsByCat.get(catFilter);
+    if (!catTags) return [];
+    return Object.entries(catTags)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([label, v]) => ({ label, color: v.color, count: v.count }));
+  }, [catFilter, globalTagCounts, tagsByCat]);
+
+  if (!open) return null;
+
+  const searchLower = search.toLowerCase();
+  const filteredCats = sortedCatEntries.filter(([name]) =>
+    !search || name.toLowerCase().includes(searchLower)
+  );
+
+  const filteredTags = searchLower
+    ? allContextTags.filter(t => t.label.toLowerCase().includes(searchLower))
+    : allContextTags;
+
+  const highTags = filteredTags.filter(t => t.count >= 3);
+  const lowTags = filteredTags.filter(t => t.count < 3);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+    }}>
+      <div onClick={onClose} style={{
+        position: 'absolute', inset: 0,
+        background: 'rgba(31,26,20,.35)',
+      }} />
+      <div ref={drawerRef} className="scroll" style={{
+        position: 'relative', zIndex: 1,
+        background: 'var(--paper-light)',
+        borderTopLeftRadius: 20, borderTopRightRadius: 20,
+        maxHeight: '75vh', overflow: 'auto',
+        padding: '0 0 calc(20px + var(--safe-bottom))',
+        boxShadow: '0 -8px 32px rgba(31,26,20,.18)',
+      }}>
+        {/* Handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--fold)' }} />
+        </div>
+
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 20px 12px',
+        }}>
+          <span style={{ fontFamily: T.fontSerif, fontSize: 16, fontWeight: 600 }}>筛选</span>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--ink-mute)', fontSize: 13, fontFamily: T.fontSerif,
+          }}>完成</button>
+        </div>
+
+        {/* Search */}
+        <div style={{ padding: '0 20px 12px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'var(--paper)', border: `1px solid var(--fold)`,
+            borderRadius: 10, padding: '8px 12px',
+          }}>
+            <I.search size={16} stroke="var(--ink-fade)" />
+            <input
+              type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="搜索分类或标签"
+              style={{
+                flex: 1, border: 'none', background: 'transparent',
+                fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink)',
+                outline: 'none',
+              }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--ink-fade)', fontSize: 14, padding: 0, lineHeight: 1,
+              }}>×</button>
+            )}
+          </div>
+        </div>
+
+        {/* Categories */}
+        <div style={{ padding: '0 20px 16px' }}>
+          <div style={{
+            fontSize: 11, color: 'var(--ink-mute)',
+            letterSpacing: '.1em', marginBottom: 8,
+          }}>分类</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {filteredCats.map(([name, count]) => {
+              const cat = categories.find(c => c.name === name);
+              const active = name === catFilter;
+              return (
+                <button key={name} onClick={() => { onCatChange(name); }} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: active ? (cat?.hex ? cat.hex + '14' : 'var(--ink)' + '0e') : 'transparent',
+                  border: `1px solid ${active ? (cat?.hex || 'var(--ink)') : 'transparent'}`,
+                  borderRadius: 10, padding: '10px 12px',
+                  cursor: 'pointer', textAlign: 'left', width: '100%',
+                  fontFamily: T.fontSerif, fontSize: 14,
+                  color: active ? (cat?.hex || 'var(--ink)') : 'var(--ink-soft)',
+                }}>
+                  {cat?.hex && <span style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: cat.hex, flexShrink: 0,
+                  }} />}
+                  <span style={{ flex: 1, fontWeight: active ? 600 : 400 }}>{name}</span>
+                  <span className="mono" style={{ fontSize: 12, color: 'var(--ink-fade)' }}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tags */}
+        <div style={{ padding: '0 20px 8px' }}>
+          <div style={{
+            fontSize: 11, color: 'var(--ink-mute)',
+            letterSpacing: '.1em', marginBottom: 8,
+          }}>
+            标签 {catFilter !== '全部' && <span style={{ opacity: .6 }}>· {catFilter} 下</span>}
+          </div>
+
+          {highTags.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: lowTags.length > 0 ? 12 : 0 }}>
+              {highTags.map(t => {
+                const active = t.label === tagFilter;
+                return (
+                  <button key={t.label} onClick={() => onTagChange(active ? '全部' : t.label)} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    border: `1px solid ${active ? 'var(--ink)' : 'var(--fold)'}`,
+                    background: active ? 'var(--ink)' : 'transparent',
+                    color: active ? 'var(--paper)' : 'var(--ink-soft)',
+                    padding: '5px 12px', borderRadius: 999, fontSize: 13,
+                    fontFamily: T.fontSerif, cursor: 'pointer',
+                  }}>
+                    <span style={{ opacity: .5, fontSize: 11 }}>#</span>
+                    {t.label}
+                    <span className="mono" style={{ fontSize: 11, opacity: .6 }}>{t.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {lowTags.length > 0 && (
+            <details>
+              <summary style={{
+                fontSize: 12, color: 'var(--ink-fade)', cursor: 'pointer',
+                fontFamily: T.fontSerif, marginBottom: 8,
+              }}>低频标签 · {lowTags.length} 个</summary>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {lowTags.map(t => {
+                  const active = t.label === tagFilter;
+                  return (
+                    <button key={t.label} onClick={() => onTagChange(active ? '全部' : t.label)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      border: `1px solid ${active ? 'var(--ink)' : 'var(--fold)'}`,
+                      background: active ? 'var(--ink)' : 'transparent',
+                      color: active ? 'var(--paper)' : 'var(--ink-soft)',
+                      padding: '5px 12px', borderRadius: 999, fontSize: 13,
+                      fontFamily: T.fontSerif, cursor: 'pointer',
+                    }}>
+                      <span style={{ opacity: .5, fontSize: 11 }}>#</span>
+                      {t.label}
+                      <span className="mono" style={{ fontSize: 11, opacity: .6 }}>{t.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+          )}
+
+          {highTags.length === 0 && lowTags.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--ink-fade)', fontFamily: T.fontSerif, padding: '8px 0' }}>
+              {search ? '没有匹配的标签' : '暂无标签'}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityChange, onCompose, onTags, onCategories, initialFilter, onUpdate, onDelete }) {
   const T = TOKENS, I = ICONS;
 
   const [filter, setFilter] = useState(initialFilter || '全部');
   const [catFilter, setCatFilter] = useState('全部');
   const [showMenu, setShowMenu] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [categories, setCategories] = useState([]);
   const [syncStatus, setSyncStatus] = useState('synced');
   const [syncing, setSyncing] = useState(false);
@@ -184,17 +385,24 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
     return m;
   }, [categories]);
 
-  const allTags = useMemo(() => {
-    const counts = {};
-    notes.forEach((n) => (n.tags || []).forEach((t) => {
-      counts[t.label] = { count: (counts[t.label]?.count || 0) + 1, color: t.color };
-    }));
-    const sorted = Object.entries(counts).sort((a, b) => b[1].count - a[1].count);
-    return {
-      tags: sorted.slice(0, 8).map(([label, v]) => ({ label, color: v.color })),
-      hasMore: sorted.length > 8,
-    };
-  }, [notes]);
+  // Build filter statistics
+  const { sortedCatEntries, sortedGlobalTags, globalTagCounts, tagsByCat } = useMemo(
+    () => buildFilterStats(notes, categories),
+    [notes, categories]
+  );
+
+  // Context-aware tags for the tag row
+  const contextTags = useMemo(
+    () => getTagsForCategory(catFilter, tagsByCat, globalTagCounts),
+    [catFilter, tagsByCat, globalTagCounts]
+  );
+
+  // Top N categories for the row (excluding "全部")
+  const topCats = useMemo(() => {
+    return sortedCatEntries.slice(0, TOP_CAT_COUNT);
+  }, [sortedCatEntries]);
+
+  const hasMoreCats = sortedCatEntries.length > TOP_CAT_COUNT;
 
   const filtered = useMemo(() => {
     let out = notes;
@@ -243,6 +451,8 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
   }, [pinned, grouped, useVirtual, pad]);
 
   const virtualRange = useVirtualList(flatItems, scrollRef, itemH, !useVirtual);
+
+  const hasActiveFilter = catFilter !== '全部' || filter !== '全部';
 
   return (
     <div className="screen paper">
@@ -318,15 +528,27 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
         </div>
       )}
 
-      {/* Category tabs */}
+      {/* Category tabs — top 5 + 更多 */}
       {categories.length > 0 && (
         <div className="category-tabs">
-          {[{ name: '全部', hex: null }, ...categories].map((cat) => {
-            const active = cat.name === catFilter;
+          <button
+            className={`category-tab ${catFilter === '全部' ? 'active' : ''}`}
+            onClick={() => { setCatFilter('全部'); }}
+            style={{
+              color: catFilter === '全部' ? 'var(--ink)' : 'var(--ink-soft)',
+              borderColor: catFilter === '全部' ? 'var(--ink)' : 'var(--fold)',
+              background: catFilter === '全部' ? 'var(--ink)' : 'transparent',
+            }}>
+            {catFilter === '全部' ? <span style={{ color: 'var(--paper)' }}>全部</span> : '全部'}
+            <span className="mono" style={{ fontSize: 11, opacity: .6 }}>{notes.length}</span>
+          </button>
+          {topCats.map(([name, count]) => {
+            const cat = categories.find(c => c.name === name);
+            const active = name === catFilter;
             return (
-              <button key={cat.name} className={`category-tab ${active ? 'active' : ''}`}
-                onClick={() => setCatFilter(cat.name)}
-                style={cat.hex ? {
+              <button key={name} className={`category-tab ${active ? 'active' : ''}`}
+                onClick={() => setCatFilter(name)}
+                style={cat?.hex ? {
                   color: cat.hex,
                   borderColor: active ? cat.hex : 'var(--fold)',
                   background: active ? cat.hex + '18' : 'transparent',
@@ -335,48 +557,110 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                   borderColor: active ? 'var(--ink)' : 'var(--fold)',
                   background: active ? 'var(--ink)' : 'transparent',
                 }}>
-                {cat.hex && <span style={{
+                {cat?.hex && <span style={{
                   width: 7, height: 7, borderRadius: '50%',
                   background: cat.hex, flexShrink: 0,
                 }} />}
-                {active && cat.name === '全部' ? (
-                  <span style={{ color: 'var(--paper)' }}>{cat.name}</span>
-                ) : cat.name}
+                {active && cat?.hex ? (
+                  <>
+                    <span>{name}</span>
+                    <span className="mono" style={{ fontSize: 11, opacity: .7 }}>{count}</span>
+                  </>
+                ) : (
+                  <>
+                    {name}
+                    <span className="mono" style={{ fontSize: 11, opacity: .6 }}>{count}</span>
+                  </>
+                )}
+              </button>
+            );
+          })}
+          {hasMoreCats && (
+            <button className="category-tab" onClick={() => setShowDrawer(true)} style={{
+              color: 'var(--ink-fade)',
+              borderColor: 'var(--fold)',
+              display: 'flex', alignItems: 'center', gap: 3,
+            }}>
+              <I.filter size={13} /> 更多
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Context-aware tag pills */}
+      {contextTags.length > 0 && (
+        <div className="scroll" style={{
+          flexDirection: 'row', display: 'flex', overflowX: 'auto', overflowY: 'hidden',
+          padding: '2px 20px 10px', gap: 6, flexShrink: 0,
+        }}>
+          {contextTags.map(({ label, color, count }) => {
+            const active = label === filter;
+            return (
+              <button key={label} onClick={() => setFilter(active ? '全部' : label)} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                border: `1px solid ${active ? 'var(--ink)' : 'var(--fold)'}`,
+                background: active ? 'var(--ink)' : 'transparent',
+                color: active ? 'var(--paper)' : 'var(--ink-soft)',
+                padding: '5px 12px', borderRadius: 999, fontSize: 13,
+                fontFamily: T.fontSerif, whiteSpace: 'nowrap', flexShrink: 0,
+                cursor: 'pointer',
+              }}>
+                <span style={{ opacity: .5, fontSize: 11 }}>#</span>
+                {label}
+                <span className="mono" style={{ fontSize: 11, opacity: .6 }}>{count}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* Filter pills */}
-      <div className="scroll" style={{
-        flexDirection: 'row', display: 'flex', overflowX: 'auto', overflowY: 'hidden',
-        padding: '2px 20px 12px', gap: 6, flexShrink: 0,
-      }}>
-        {[{ label: '全部', color: null }, ...allTags.tags].map(({ label, color }) => {
-          const active = label === filter;
-          return (
-            <button key={label} onClick={() => setFilter(label)} style={{
-              border: `1px solid ${active ? 'var(--ink)' : 'var(--fold)'}`,
-              background: active ? 'var(--ink)' : 'transparent',
-              color: active ? 'var(--paper)' : 'var(--ink-soft)',
-              padding: '5px 14px', borderRadius: 999, fontSize: 13,
-              fontFamily: T.fontSerif, whiteSpace: 'nowrap', flexShrink: 0,
-              cursor: 'pointer',
-            }}>{label}</button>
-          );
-        })}
-        {allTags.hasMore && (
-          <button onClick={onTags} style={{
-            border: '1px solid var(--fold)',
-            background: 'transparent',
-            color: 'var(--ink-fade)',
-            padding: '5px 14px', borderRadius: 999, fontSize: 13,
-            fontFamily: T.fontSerif, whiteSpace: 'nowrap', flexShrink: 0,
-            cursor: 'pointer',
-          }}>更多</button>
-        )}
-      </div>
+      {/* Filter state bar */}
+      {hasActiveFilter && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 20px 8px', flexShrink: 0,
+          fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink-mute)',
+        }}>
+          {catFilter !== '全部' && (
+            <>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                background: 'var(--paper-light)', border: `1px solid var(--fold)`,
+                borderRadius: 8, padding: '3px 10px', fontSize: 12,
+              }}>
+                {catMap.get(catFilter) && <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: catMap.get(catFilter), flexShrink: 0,
+                }} />}
+                {catFilter}
+                <button onClick={() => setCatFilter('全部')} style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--ink-fade)', fontSize: 14, padding: 0, lineHeight: 1, marginLeft: 2,
+                }}>×</button>
+              </span>
+              {filter !== '全部' && <span style={{ color: 'var(--ink-fade)', fontSize: 12 }}>/</span>}
+            </>
+          )}
+          {filter !== '全部' && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              background: 'var(--paper-light)', border: `1px solid var(--fold)`,
+              borderRadius: 8, padding: '3px 10px', fontSize: 12,
+            }}>
+              #{filter}
+              <button onClick={() => setFilter('全部')} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--ink-fade)', fontSize: 14, padding: 0, lineHeight: 1, marginLeft: 2,
+              }}>×</button>
+            </span>
+          )}
+          <button onClick={() => { setFilter('全部'); setCatFilter('全部'); }} style={{
+            marginLeft: 'auto', background: 'none', border: 'none',
+            color: 'var(--ink-fade)', cursor: 'pointer', fontSize: 12,
+            fontFamily: T.fontSerif,
+          }}>清除</button>
+        </div>
+      )}
 
       {/* Notes — virtual scroll for 100+ items, normal render otherwise */}
       <div ref={scrollRef} className="scroll" style={{ flex: 1, padding: '0 20px 88px' }}
@@ -391,7 +675,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
             marginTop: 30,
           }}>
             <SealStamp size={50} rotate={-6} />
-            {(filter !== '全部' || catFilter !== '全部') ? (
+            {hasActiveFilter ? (
               <>
                 <div style={{ marginTop: 16, fontSize: 16 }}>没有找到匹配的笔记</div>
                 <button onClick={() => { setFilter('全部'); setCatFilter('全部'); }} style={{
@@ -514,6 +798,21 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
         />
       )}
 
+      {/* Filter drawer */}
+      <FilterDrawer
+        open={showDrawer}
+        onClose={() => setShowDrawer(false)}
+        categories={categories}
+        catFilter={catFilter}
+        onCatChange={(cat) => { setCatFilter(cat); setShowDrawer(false); }}
+        tagFilter={filter}
+        onTagChange={(tag) => { setFilter(tag); }}
+        sortedCatEntries={sortedCatEntries}
+        contextTags={contextTags}
+        globalTagCounts={globalTagCounts}
+        tagsByCat={tagsByCat}
+      />
+
       {/* FAB */}
       <button onClick={onCompose} aria-label="新建笔记"
         style={{
@@ -567,6 +866,11 @@ const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, vir
     if (isOpen) { reset(); return; }
     onOpen();
   };
+
+  const tags = note.tags || [];
+  const maxTags = 2;
+  const visibleTags = tags.slice(0, maxTags);
+  const extraCount = tags.length - maxTags;
 
   return (
     <div className="swipe-row" style={{ position: 'relative', overflow: 'hidden', borderRadius: 14 }}>
@@ -622,11 +926,19 @@ const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, vir
             border: `1px solid var(--fold)`,
           }} />
         )}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {(note.tags || []).slice(0, 3).map((t, i) => (
-            <Tag key={t.label + i} label={t.label} color={t.color} size="sm" />
-          ))}
-        </div>
+        {tags.length > 0 && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {visibleTags.map((t, i) => (
+              <Tag key={t.label + i} label={t.label} color={t.color} size="sm" />
+            ))}
+            {extraCount > 0 && (
+              <span style={{
+                fontSize: 11, color: 'var(--ink-fade)',
+                fontFamily: T.fontSerif, whiteSpace: 'nowrap',
+              }}>+{extraCount}</span>
+            )}
+          </div>
+        )}
       </button>
     </div>
   );
