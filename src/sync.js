@@ -158,9 +158,11 @@ export async function testConnection(config) {
       username: config.username,
       password: config.password,
     });
+    // Read test: PROPFIND server root (always exists)
+    await c.getDirectoryContents('/');
+    // Write test: PUT + DELETE a probe file in configured rootPath
     const testRoot = (config.rootPath || '/yan').replace(/\/+$/, '') || '/yan';
-    await c.getDirectoryContents(testRoot);
-    // Write test: PUT + DELETE a probe file
+    try { await c.createDirectory(testRoot, { recursive: true }); } catch {}
     const probePath = testRoot + '/.yan-probe-' + Date.now();
     await c.putFileContents(probePath, 'probe', { overwrite: true });
     try { await c.deleteFile(probePath); } catch {}
