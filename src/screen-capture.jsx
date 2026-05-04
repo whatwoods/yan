@@ -240,7 +240,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     return 4 + Math.abs(Math.sin(phase) * 16) + Math.abs(Math.cos(phase * 1.3) * 6);
   });
 
-  const recent = notes.slice(0, 3);
+  const recent = notes.slice(0, 5);
   const greeting = greetingByHour();
 
   return (
