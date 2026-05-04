@@ -25,16 +25,16 @@ function sanitizeId(id) {
   return String(id).replace(/[^a-zA-Z0-9\-\.]/g, '');
 }
 
-export function getNotePath(id) {
+export function getNotePath(id, root = '/yan') {
   const safe = sanitizeId(id);
   const year = safe.slice(0, 4);
   const month = safe.slice(5, 7);
-  return `/yan/notes/${year}/${month}/${safe}.md`;
+  return `${root}/notes/${year}/${month}/${safe}.md`;
 }
 
-export function getTrashPath(noteId) {
+export function getTrashPath(noteId, root = '/yan') {
   const safe = sanitizeId(noteId);
-  return `/yan/trash/${safe}.md`;
+  return `${root}/trash/${safe}.md`;
 }
 
 export function getAttachmentPath(noteId, filename) {

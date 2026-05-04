@@ -106,12 +106,18 @@ function createClient(server, opts) {
 }
 
 let client = null;
+let rootPath = '/yan';
+
+function root(sub = '') {
+  return rootPath + sub;
+}
 
 /**
  * Initialize the WebDAV client with connection config.
- * @param {{ server: string, username: string, password: string }} config
+ * @param {{ server: string, username: string, password: string, rootPath?: string }} config
  */
 export function initWebDAV(config) {
+  rootPath = (config.rootPath || '/yan').replace(/\/+$/, '') || '/yan';
   client = createClient(config.server, {
     username: config.username,
     password: config.password,
@@ -143,7 +149,7 @@ export async function testConnection(config) {
 export async function pushNote(note) {
   if (!client) return;
   const md = serialize(note);
-  const path = note.deleted_at ? getTrashPath(note.id) : getNotePath(note.id);
+  const path = note.deleted_at ? getTrashPath(note.id, rootPath) : getNotePath(note.id, rootPath);
   // Ensure parent directory exists
   const dir = path.substring(0, path.lastIndexOf('/'));
   try { await client.createDirectory(dir, { recursive: true }); } catch {}
@@ -164,7 +170,7 @@ export async function pullNotes(months = 6) {
     d.setMonth(d.getMonth() - i);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
-    const dirPath = `/yan/notes/${year}/${month}`;
+    const dirPath = root(`/notes/${year}/${month}`);
     try {
       const contents = await client.getDirectoryContents(dirPath);
       for (const file of (Array.isArray(contents) ? contents : [])) {
@@ -189,7 +195,7 @@ export async function pullTrashNotes() {
   if (!client) return [];
   const pulled = [];
   try {
-    const contents = await client.getDirectoryContents('/yan/trash');
+    const contents = await client.getDirectoryContents(root('/trash'));
     for (const file of (Array.isArray(contents) ? contents : [])) {
       if (file.filename.endsWith('.md')) {
         try {
@@ -210,8 +216,8 @@ export async function pullTrashNotes() {
  */
 export async function pushCategories(categories) {
   if (!client) return;
-  try { await client.createDirectory('/yan', { recursive: true }); } catch {}
-  await client.putFileContents('/yan/categories.json', JSON.stringify(categories, null, 2), { overwrite: true });
+  try { await client.createDirectory(rootPath, { recursive: true }); } catch {}
+  await client.putFileContents(root('/categories.json'), JSON.stringify(categories, null, 2), { overwrite: true });
 }
 
 /**
@@ -221,7 +227,7 @@ export async function pushCategories(categories) {
 export async function pullCategories() {
   if (!client) return null;
   try {
-    const data = await client.getFileContents('/yan/categories.json', { format: 'text' });
+    const data = await client.getFileContents(root('/categories.json'), { format: 'text' });
     return JSON.parse(data);
   } catch (e) {
     console.warn('[sync] 读取分类失败:', e.message);
@@ -234,8 +240,8 @@ export async function pullCategories() {
  */
 export async function pushInsight(yearMonth, text) {
   if (!client) return;
-  try { await client.createDirectory('/yan/insights', { recursive: true }); } catch {}
-  await client.putFileContents(`/yan/insights/${yearMonth}.md`, text, { overwrite: true });
+  try { await client.createDirectory(root('/insights'), { recursive: true }); } catch {}
+  await client.putFileContents(root(`/insights/${yearMonth}.md`), text, { overwrite: true });
 }
 
 /**
@@ -246,7 +252,7 @@ export async function pullInsights() {
   if (!client) return new Map();
   const result = new Map();
   try {
-    const contents = await client.getDirectoryContents('/yan/insights');
+    const contents = await client.getDirectoryContents(root('/insights'));
     for (const file of (Array.isArray(contents) ? contents : [])) {
       if (file.filename.endsWith('.md')) {
         try {
@@ -265,8 +271,8 @@ export async function pullInsights() {
  */
 export async function pushPreferences(prefs) {
   if (!client) return;
-  try { await client.createDirectory('/yan', { recursive: true }); } catch {}
-  await client.putFileContents('/yan/preferences.md', JSON.stringify(prefs, null, 2), { overwrite: true });
+  try { await client.createDirectory(rootPath, { recursive: true }); } catch {}
+  await client.putFileContents(root('/preferences.md'), JSON.stringify(prefs, null, 2), { overwrite: true });
 }
 
 /**
@@ -276,7 +282,7 @@ export async function pushPreferences(prefs) {
 export async function pullPreferences() {
   if (!client) return null;
   try {
-    const data = await client.getFileContents('/yan/preferences.md', { format: 'text' });
+    const data = await client.getFileContents(root('/preferences.md'), { format: 'text' });
     return JSON.parse(data);
   } catch (e) {
     console.warn('[sync] 读取偏好失败:', e.message);
@@ -289,9 +295,9 @@ export async function pullPreferences() {
  */
 export async function pushConflict(note) {
   if (!client) return;
-  try { await client.createDirectory('/yan/conflicts', { recursive: true }); } catch {}
+  try { await client.createDirectory(root('/conflicts'), { recursive: true }); } catch {}
   const md = serialize(note);
-  await client.putFileContents(`/yan/conflicts/${note.id}.md`, md, { overwrite: true });
+  await client.putFileContents(root(`/conflicts/${note.id}.md`), md, { overwrite: true });
 }
 
 // ── Main sync ─────────────────────────────────────────────────

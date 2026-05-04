@@ -85,7 +85,7 @@ export function YanScreen({ notes, persona, personaKey, onPersonaChange, onNavig
               <button onClick={handleExport} style={menuItem(T)}>
                 <I.clip size={14} /> 导出洞察长图
               </button>
-              <button onClick={() => { onNavigate?.('settings'); setShowMenu(false); }} style={menuItem(T)}>
+              <button onClick={() => { onNavigate?.('settings-ai'); setShowMenu(false); }} style={menuItem(T)}>
                 <I.settings size={14} /> 设置
               </button>
             </div>

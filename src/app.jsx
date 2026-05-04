@@ -14,6 +14,9 @@ const SettingsScreen = React.lazy(() => import('./screen-settings.jsx').then(m =
 const SearchScreen = React.lazy(() => import('./screen-search.jsx').then(m => ({ default: m.SearchScreen })));
 const TagsScreen = React.lazy(() => import('./screen-tags.jsx').then(m => ({ default: m.TagsScreen })));
 const TrashScreen = React.lazy(() => import('./screen-trash.jsx').then(m => ({ default: m.TrashScreen })));
+const AISettingsScreen = React.lazy(() => import('./screen-settings-ai.jsx').then(m => ({ default: m.AISettingsScreen })));
+const SyncSettingsScreen = React.lazy(() => import('./screen-settings-sync.jsx').then(m => ({ default: m.SyncSettingsScreen })));
+const CategoriesSettingsScreen = React.lazy(() => import('./screen-settings-categories.jsx').then(m => ({ default: m.CategoriesSettingsScreen })));
 
 export function App() {
   const [notes, setNotes] = useState([]);
@@ -24,6 +27,7 @@ export function App() {
   const [openNoteId, setOpenNoteId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [autoExpandInput, setAutoExpandInput] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
 
   // PWA install prompt
@@ -151,6 +155,8 @@ export function App() {
     const onPop = () => {
       if (route === 'detail' || route === 'search' || route === 'tags' || route === 'trash') {
         setRoute(route === 'detail' ? 'list' : route === 'trash' ? 'settings' : 'list');
+      } else if (route.startsWith('settings-')) {
+        setRoute('settings');
       }
     };
     window.addEventListener('popstate', onPop);
@@ -236,7 +242,9 @@ export function App() {
             persona={persona}
             showSetupHint={showSetupHint && !aiConfigured}
             onDismissSetup={() => { Store.markRun(); setShowSetupHint(false); }}
-            onGoSettings={() => { Store.markRun(); setShowSetupHint(false); setRoute('settings'); }}
+            onGoSettings={() => { Store.markRun(); setShowSetupHint(false); setRoute('settings-ai'); }}
+            autoExpand={autoExpandInput}
+            onAutoExpanded={() => setAutoExpandInput(false)}
           />
         )}
         <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'var(--font-serif)', color: 'var(--ink-mute)' }}>加载中…</div>}>
@@ -248,7 +256,7 @@ export function App() {
               onOpenNote={openNote}
               onSearch={goSearch}
               onTags={goTags}
-              onCompose={() => setRoute('capture')}
+              onCompose={() => { setAutoExpandInput(true); setRoute('capture'); }}
             />
           )}
           {route === 'detail' && openNote_ && (
@@ -307,6 +315,26 @@ export function App() {
             <TrashScreen
               onBack={() => setRoute('settings')}
               onRefresh={() => setNotes(Store.getNotes())}
+            />
+          )}
+          {route === 'settings-ai' && (
+            <AISettingsScreen
+              onBack={() => setRoute('settings')}
+              persona={persona}
+              settings={settings}
+              onSettingsChange={setSettings}
+              onAIConfigChange={handleAIConfigChange}
+            />
+          )}
+          {route === 'settings-sync' && (
+            <SyncSettingsScreen
+              onBack={() => setRoute('settings')}
+              settings={settings}
+            />
+          )}
+          {route === 'settings-categories' && (
+            <CategoriesSettingsScreen
+              onBack={() => setRoute('settings')}
             />
           )}
         </Suspense>

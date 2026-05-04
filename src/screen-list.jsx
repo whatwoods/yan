@@ -10,17 +10,18 @@ import { initWebDAV, syncAll } from './sync.js';
 
 // ── Simple virtual list for 100+ notes ────────────────────────
 const VIRTUAL_THRESHOLD = 100;
-const ITEM_H_COMFY = 100;
-const ITEM_H_COMPACT = 76;
+const ITEM_H_COMFY = 110;
+const ITEM_H_COMPACT = 80;
 const HEADER_H = 36;
 const BUFFER = 6;
 
-function useVirtualList(flatItems, containerRef, itemHeight) {
+function useVirtualList(flatItems, containerRef, itemHeight, disabled) {
   const [range, setRange] = useState({ start: 0, end: 30 });
   const rafRef = useRef(null);
   const prevRangeRef = useRef({ start: 0, end: 30 });
 
   useEffect(() => {
+    if (disabled) return;
     const el = containerRef.current;
     if (!el) return;
 
@@ -47,9 +48,9 @@ function useVirtualList(flatItems, containerRef, itemHeight) {
       el.removeEventListener('scroll', onScroll);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [flatItems.length, itemHeight, containerRef]);
+  }, [disabled, flatItems.length, itemHeight, containerRef]);
 
-  return range;
+  return disabled ? null : range;
 }
 
 function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose, onTags, initialFilter }) {
@@ -66,7 +67,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
 
   useEffect(() => { setFilter(initialFilter || '全部'); }, [initialFilter]);
 
-  // Load sync status on mount and periodically
+  // Load sync status on mount
   useEffect(() => {
     const loadStatus = async () => {
       try {
@@ -79,23 +80,9 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
       } catch {}
     };
     loadStatus();
-    const interval = setInterval(loadStatus, 10000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Pull-to-refresh
-  const handleTouchStart = useCallback((e) => {
-    if (scrollRef.current && scrollRef.current.scrollTop === 0) {
-      pullRef.current.startY = e.touches[0].clientY;
-      pullRef.current.pulling = true;
-    }
-  }, []);
-
-  const handleTouchEnd = useCallback(async () => {
-    if (!pullRef.current.pulling) return;
-    pullRef.current.pulling = false;
-  }, []);
-
+  // Sync handler (defined before pull-to-refresh so it can be referenced)
   const handleSync = useCallback(async () => {
     if (syncing) return;
     setSyncing(true);
@@ -128,6 +115,30 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
     }
   }, [syncing]);
 
+  // Pull-to-refresh
+  const handleTouchStart = useCallback((e) => {
+    if (scrollRef.current && scrollRef.current.scrollTop === 0) {
+      pullRef.current.startY = e.touches[0].clientY;
+      pullRef.current.pulling = true;
+      pullRef.current.pullDist = 0;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    if (!pullRef.current.pulling) return;
+    pullRef.current.pullDist = e.touches[0].clientY - pullRef.current.startY;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!pullRef.current.pulling) return;
+    const dist = pullRef.current.pullDist || 0;
+    pullRef.current.pulling = false;
+    pullRef.current.pullDist = 0;
+    if (dist > 80) {
+      handleSync();
+    }
+  }, [handleSync]);
+
   // Sync status indicator component
   const SyncIcon = useMemo(() => {
     if (syncing) {
@@ -152,15 +163,23 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
     Store.getCategories().then(setCategories).catch(() => {});
   }, []);
 
+  // Category name → hex lookup map
+  const catMap = useMemo(() => {
+    const m = new Map();
+    categories.forEach(c => m.set(c.name, c.hex));
+    return m;
+  }, [categories]);
+
   const allTags = useMemo(() => {
     const counts = {};
     notes.forEach((n) => (n.tags || []).forEach((t) => {
       counts[t.label] = { count: (counts[t.label]?.count || 0) + 1, color: t.color };
     }));
-    return Object.entries(counts)
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 6)
-      .map(([label, v]) => ({ label, color: v.color }));
+    const sorted = Object.entries(counts).sort((a, b) => b[1].count - a[1].count);
+    return {
+      tags: sorted.slice(0, 8).map(([label, v]) => ({ label, color: v.color })),
+      hasMore: sorted.length > 8,
+    };
   }, [notes]);
 
   const filtered = useMemo(() => {
@@ -196,7 +215,10 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   const flatItems = useMemo(() => {
     if (!useVirtual) return [];
     const items = [];
-    pinned.forEach((n) => items.push({ type: 'note', note: n, pad }));
+    if (pinned.length > 0) {
+      items.push({ type: 'header', dayKey: '钉住', count: pinned.length });
+      pinned.forEach((n) => items.push({ type: 'note', note: n, pad }));
+    }
     grouped.forEach(([dayKey, dayItems]) => {
       const remain = dayItems.filter((n) => !n.pinned);
       if (remain.length === 0) return;
@@ -206,13 +228,17 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
     return items;
   }, [pinned, grouped, useVirtual, pad]);
 
-  const virtualRange = useVirtual ? useVirtualList(flatItems, scrollRef, itemH) : null;
+  const virtualRange = useVirtualList(flatItems, scrollRef, itemH, !useVirtual);
 
   return (
     <div className="screen paper">
       <ScrHead title="笔记本" right={
         <>
           {SyncIcon}
+          <button className="icon-btn" onClick={handleSync} aria-label="同步" disabled={syncing}
+            style={syncing ? { animation: 'spin 1s linear infinite' } : undefined}>
+            <span style={{ fontSize: 18 }}>&#8635;</span>
+          </button>
           <button className="icon-btn" onClick={onSearch} aria-label="搜索"><I.search size={20} /></button>
           <button className="icon-btn" onClick={onTags} aria-label="标签"><I.tag size={20} /></button>
         </>
@@ -270,7 +296,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
         flexDirection: 'row', display: 'flex', overflowX: 'auto', overflowY: 'hidden',
         padding: '2px 20px 12px', gap: 6, flexShrink: 0,
       }}>
-        {[{ label: '全部', color: null }, ...allTags].map(({ label, color }) => {
+        {[{ label: '全部', color: null }, ...allTags.tags].map(({ label, color }) => {
           const active = label === filter;
           return (
             <button key={label} onClick={() => setFilter(label)} style={{
@@ -283,11 +309,22 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
             }}>{label}</button>
           );
         })}
+        {allTags.hasMore && (
+          <button onClick={onTags} style={{
+            border: '1px solid var(--fold)',
+            background: 'transparent',
+            color: 'var(--ink-fade)',
+            padding: '5px 14px', borderRadius: 999, fontSize: 13,
+            fontFamily: T.fontSerif, whiteSpace: 'nowrap', flexShrink: 0,
+            cursor: 'pointer',
+          }}>更多</button>
+        )}
       </div>
 
       {/* Notes — virtual scroll for 100+ items, normal render otherwise */}
       <div ref={scrollRef} className="scroll" style={{ flex: 1, padding: '0 20px 88px' }}
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}>
         {filtered.length === 0 && (
           <div role="status" style={{
@@ -297,8 +334,21 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
             marginTop: 30,
           }}>
             <SealStamp size={50} rotate={-6} />
-            <div style={{ marginTop: 16, fontSize: 16 }}>这里空空如也</div>
-            <div style={{ marginTop: 6, fontSize: 13, color: 'var(--ink-fade)' }}>去「记」页落下第一笔</div>
+            {(filter !== '全部' || catFilter !== '全部') ? (
+              <>
+                <div style={{ marginTop: 16, fontSize: 16 }}>没有找到匹配的笔记</div>
+                <button onClick={() => { setFilter('全部'); setCatFilter('全部'); }} style={{
+                  marginTop: 12, background: 'var(--ink)', color: 'var(--paper)',
+                  border: 'none', borderRadius: 999, padding: '6px 20px', fontSize: 13,
+                  fontFamily: T.fontSerif, cursor: 'pointer',
+                }}>清除筛选</button>
+              </>
+            ) : (
+              <>
+                <div style={{ marginTop: 16, fontSize: 16 }}>这里空空如也</div>
+                <div style={{ marginTop: 6, fontSize: 13, color: 'var(--ink-fade)' }}>去「记」页落下第一笔</div>
+              </>
+            )}
           </div>
         )}
 
@@ -322,7 +372,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
               }
               return (
                 <div key={item.note.id} style={{ position: 'absolute', top, left: 0, right: 0, height: itemH, paddingTop: item.type === 'header' ? 0 : 2, paddingBottom: 2 }}>
-                  <NoteCard note={item.note} pad={item.pad} catColor={categories.find(c => c.name === item.note.category)?.hex} onOpen={() => onOpenNote(item.note.id)} />
+                  <NoteCard note={item.note} pad={item.pad} catColor={catMap.get(item.note.category)} onOpen={() => onOpenNote(item.note.id)} virtualMode />
                 </div>
               );
             })}
@@ -341,7 +391,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
                   <div style={{ flex: 1, height: 1, background: 'var(--fold)' }} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
+                  {pinned.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} />)}
                 </div>
               </div>
             )}
@@ -359,7 +409,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)' }}>{remain.length} 条</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap }}>
-                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={categories.find(c => c.name === it.category)?.hex} onOpen={() => onOpenNote(it.id)} />)}
+                    {remain.map((it) => <NoteCard key={it.id} note={it} pad={pad} catColor={catMap.get(it.category)} onOpen={() => onOpenNote(it.id)} />)}
                   </div>
                 </div>
               );
@@ -384,7 +434,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
   );
 }
 
-function NoteCard({ note, pad, catColor, onOpen }) {
+const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, virtualMode }) {
   const T = TOKENS;
   return (
     <button onClick={onOpen} style={{
@@ -419,7 +469,7 @@ function NoteCard({ note, pad, catColor, onOpen }) {
           overflow: 'hidden',
         }}>{note.body}</div>
       )}
-      {note.photo && (
+      {note.photo && !virtualMode && (
         <div style={{
           height: 120, borderRadius: 10, marginBottom: 8,
           backgroundImage: `url(${note.photo})`, backgroundSize: 'cover', backgroundPosition: 'center',
@@ -433,6 +483,6 @@ function NoteCard({ note, pad, catColor, onOpen }) {
       </div>
     </button>
   );
-}
+});
 
 export { ListScreen };

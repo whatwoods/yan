@@ -29,7 +29,7 @@ async function compressPhoto(file) {
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
 
-export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHint, onDismissSetup, onGoSettings }) {
+export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHint, onDismissSetup, onGoSettings, autoExpand, onAutoExpanded }) {
   const T = TOKENS, I = ICONS;
 
   const [mode, setMode] = useState('idle');
@@ -40,6 +40,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
   const [recordingStart, setRecordingStart] = useState(0);
   const [categories, setCategories] = useState([]);
   const [isFullEditor, setFullEditor] = useState(false);
+  const [isClosing, setClosing] = useState(false);
+  const [showIdleSuggestions, setShowIdleSuggestions] = useState(true);
 
   const taRef = useRef(null);
   const omniboxRef = useRef(null);
@@ -47,9 +49,18 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
   const photoInputRef = useRef(null);
   const filePickerRef = useRef(null);
   const focusAfterExpandRef = useRef(false);
+  const collapseTimerRef = useRef(null);
+  const suggestionsTimerRef = useRef(null);
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (autoExpand) {
+      setCaptureMode('text', { focusText: true });
+      onAutoExpanded?.();
+    }
   }, []);
 
   function setCaptureMode(nextMode, options = {}) {
@@ -58,6 +69,15 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
       && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (el && mode !== nextMode && !reduceMotion) {
       el.dataset.fromHeight = String(el.getBoundingClientRect().height);
+      el.dataset.toMode = nextMode;
+    }
+    if (nextMode !== 'idle') {
+      window.clearTimeout(suggestionsTimerRef.current);
+      setShowIdleSuggestions(false);
+      setClosing(false);
+    } else if (mode !== 'idle') {
+      window.clearTimeout(suggestionsTimerRef.current);
+      setShowIdleSuggestions(false);
     }
     focusAfterExpandRef.current = Boolean(options.focusText);
     setMode(nextMode);
@@ -68,7 +88,9 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     const from = el?.dataset.fromHeight;
     if (!el || !from) return;
 
+    const toMode = el.dataset.toMode;
     delete el.dataset.fromHeight;
+    delete el.dataset.toMode;
     const startHeight = Number(from);
     const endHeight = el.scrollHeight;
     if (!Number.isFinite(startHeight) || Math.abs(endHeight - startHeight) < 1) return;
@@ -79,7 +101,9 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     el.getBoundingClientRect();
 
     requestAnimationFrame(() => {
-      el.style.transition = 'height .34s cubic-bezier(.2, .85, .18, 1), border-radius .28s ease, padding .28s ease, border-color .2s ease, box-shadow .28s ease';
+      el.style.transition = toMode === 'idle'
+        ? 'height .28s cubic-bezier(.28, .72, .22, 1), border-radius .24s ease, padding .24s ease, border-color .18s ease, box-shadow .22s ease'
+        : 'height .34s cubic-bezier(.2, .85, .18, 1), border-radius .28s ease, padding .28s ease, border-color .2s ease, box-shadow .28s ease';
       el.style.height = `${endHeight}px`;
     });
 
@@ -116,6 +140,19 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     }, 140);
     return () => clearTimeout(id);
   }, [mode, isFullEditor]);
+
+  useEffect(() => {
+    if (mode !== 'idle' || showIdleSuggestions) return;
+    suggestionsTimerRef.current = window.setTimeout(() => setShowIdleSuggestions(true), 230);
+    return () => window.clearTimeout(suggestionsTimerRef.current);
+  }, [mode, showIdleSuggestions]);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(collapseTimerRef.current);
+      window.clearTimeout(suggestionsTimerRef.current);
+    };
+  }, []);
 
   // ── Recording (Web Speech API for transcription, MediaRecorder fallback). ───
   useEffect(() => {
@@ -248,6 +285,20 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
     setCaptureMode('text', { focusText: true });
   }
 
+  function collapseTextInput() {
+    window.clearTimeout(collapseTimerRef.current);
+    window.clearTimeout(suggestionsTimerRef.current);
+    setShowIdleSuggestions(false);
+    setClosing(true);
+    collapseTimerRef.current = window.setTimeout(() => {
+      setText('');
+      setPhotoData(null);
+      setFullEditor(false);
+      setClosing(false);
+      setCaptureMode('idle');
+    }, 110);
+  }
+
   async function handlePhoto(e) {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -331,7 +382,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
           fontSize: 13, fontFamily: T.fontSerif, color: 'var(--ink-soft)',
         }}>
           <span style={{ flex: 1 }}>
-            随时可写。想让 {persona.name} 更聪明？去
+            想让 {persona.name} 更聪明？去
             <button onClick={onGoSettings} style={{
               background: 'none', border: 'none', color: persona.color,
               fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit',
@@ -397,8 +448,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
       </div>
 
       {/* Suggestion chips when idle */}
-      {mode === 'idle' && (
-        <div style={{ display: 'flex', gap: 8, padding: '8px 20px 0', flexWrap: 'wrap' }}>
+      {showIdleSuggestions && (
+        <div className="capture-suggestions" style={{ display: 'flex', gap: 8, padding: '8px 20px 0', flexWrap: 'wrap' }}>
           {['一个想法', '今天读到的', '待办', '关于某人'].map((s) => (
             <button key={s} className="btn-ghost" onClick={() => { setText(''); expandToText(); }}>
               {s}
@@ -412,6 +463,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
         ref={omniboxRef}
         className="capture-omnibox"
         data-mode={mode}
+        data-closing={isClosing ? 'true' : undefined}
         style={{
         margin: '14px 16px 0',
         background: 'var(--paper-light)',
@@ -473,7 +525,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHin
               }}
             />
             <div className="capture-editor-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button className="icon-btn" onClick={() => { setText(''); setPhotoData(null); setFullEditor(false); setCaptureMode('idle'); }} aria-label="折叠">
+              <button className="icon-btn" onClick={collapseTextInput} aria-label="折叠">
                 <I.close size={18} />
               </button>
               <button className="icon-btn" onClick={() => photoInputRef.current?.click()} aria-label="加图">

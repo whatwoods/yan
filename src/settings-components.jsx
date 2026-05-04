@@ -2,7 +2,30 @@
 
 import React from 'react';
 import { TOKENS, PERSONAS } from './tokens.jsx';
+import { ICONS } from './icons.jsx';
 import { SealStamp } from './components.jsx';
+
+// ── Section ───────────────────────────────────────────────────
+
+// ── SubScrHead (sub-page header with back) ──────────────────
+
+export function SubScrHead({ title, onBack, right }) {
+  const T = TOKENS;
+  const I = ICONS;
+  return (
+    <div className="scr-head" style={{ paddingBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button className="icon-btn" onClick={onBack} aria-label="返回" style={{ marginLeft: -6 }}>
+          <I.back size={22} />
+        </button>
+        <span style={{ fontFamily: T.fontSerif, fontSize: 17, fontWeight: 600, color: 'var(--ink)' }}>
+          {title}
+        </span>
+      </div>
+      {right && <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>{right}</div>}
+    </div>
+  );
+}
 
 // ── Section ───────────────────────────────────────────────────
 

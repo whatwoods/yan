@@ -58,9 +58,13 @@ export function BottomNav({ active, onChange }) {
   return (
     <div className="nav">
       {items.map(([k, label, Ico]) => (
-        <button key={k} className={`nav-btn ${k === active ? 'active' : ''}`}
+        <button key={k}
+          className={`nav-btn ${k === active ? 'active' : ''}`}
           onClick={() => onChange(k)} aria-label={label}>
-          <Ico size={22} />
+          <span className="nav-icon">
+            <Ico size={22} />
+            <span className={`nav-icon-fill${k === 'settings' || k === 'yan' ? ' center-hole' : ''}`}><Ico size={22} fill="currentColor" stroke="currentColor" sw={1.2} /></span>
+          </span>
           <span>{label}</span>
         </button>
       ))}

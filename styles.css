@@ -154,6 +154,27 @@ html, body {
 .nav-btn:active { transform: scale(.94); }
 .nav-btn.active { color: var(--seal); }
 .nav-btn span { font-size: 10px; letter-spacing: .04em; }
+.nav-icon {
+  position: relative;
+  display: inline-flex;
+  width: 22px; height: 22px;
+}
+.nav-icon > svg { position: relative; z-index: 1; }
+.nav-icon-fill {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  clip-path: inset(100% 0 0 0);
+  transition: clip-path 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+}
+.center-hole {
+  -webkit-mask-image: radial-gradient(circle 6px at 50% 50%, transparent 3px, black 3px);
+  mask-image: radial-gradient(circle 6px at 50% 50%, transparent 3px, black 3px);
+}
+.nav-btn.active .nav-icon-fill {
+  clip-path: inset(0 0 0 0);
+}
 
 /* Buttons */
 .icon-btn {
@@ -426,8 +447,15 @@ input::-webkit-search-cancel-button {
 .capture-idle-row {
   animation: capture-idle-in .2s ease both;
 }
+.capture-suggestions {
+  animation: capture-suggestions-in .24s ease both;
+}
 .capture-editor-panel {
   animation: capture-editor-in .32s cubic-bezier(.2, .85, .18, 1) both;
+}
+.capture-omnibox[data-closing="true"] .capture-editor-panel {
+  animation: capture-editor-out .12s ease both;
+  pointer-events: none;
 }
 .capture-editor-toolbar {
   animation: capture-toolbar-in .28s cubic-bezier(.2, .85, .18, 1) .04s both;
@@ -510,12 +538,20 @@ input::-webkit-search-cancel-button {
   from { opacity: 0; transform: translateY(7px) scale(.992); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes capture-editor-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(4px) scale(.996); }
+}
 @keyframes capture-toolbar-in {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes capture-idle-in {
   from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes capture-suggestions-in {
+  from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes full-editor-in {
