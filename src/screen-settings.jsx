@@ -8,11 +8,11 @@ import { Store, DEFAULT_CATEGORIES, addNoteToIndex, updateNoteInIndex } from './
 import { initWebDAV, testConnection, syncAll } from './sync.js';
 import { SecretsStore } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
-import { PROVIDERS, TASK_LABELS, fetchModels as aiFetchModels, getModelAssignment } from './ai.js';
+import { PROVIDERS, TASK_LABELS, fetchModels as aiFetchModels, getModelAssignment, isAIConfigured } from './ai.js';
 import { Section, Row, PickerSheet, PersonaSheet, FontSheet, inputStyle } from './settings-components.jsx';
 import { MasterPasswordSheet, UnlockSheet } from './settings-security.jsx';
 
-export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate, installPrompt }) {
+export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate, installPrompt, onAIConfigChange }) {
   const T = TOKENS, I = ICONS;
 
   const [showPersona, setShowPersona] = useState(false);
@@ -56,7 +56,12 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           SecretsStore.isSetup(),
           getModelAssignment(),
         ]);
-        if (savedAi) setAiConfig(prev => ({ ...prev, ...savedAi, apiKey: savedAi.apiKey || '' }));
+        if (savedAi) {
+          const hydrated = { ...savedAi, apiKey: savedAi.apiKey || SecretsStore.get('apiKey') || '' };
+          setAiConfig(prev => ({ ...prev, ...hydrated }));
+          setAiModels(hydrated.models || []);
+          onAIConfigChange?.(hydrated, savedAssignment);
+        }
         if (savedAssignment) setModelAssignment(savedAssignment);
         if (savedWebdav) {
           setWebdavConfig(prev => ({ ...prev, ...savedWebdav, password: savedWebdav.password || '' }));
@@ -85,6 +90,8 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   // ── AI config handlers ──────────────────────────────────────
   const saveAiConfig = useCallback(async (config) => {
     setAiConfig(config);
+    const models = config.models || [];
+    setAiModels(models);
     if (masterPasswordSet && secretsUnlocked) {
       // Encrypt API key via SecretsStore; store config without it
       await SecretsStore.update({
@@ -99,7 +106,8 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     } else {
       await setMeta('aiConfig', config);
     }
-  }, [masterPasswordSet, secretsUnlocked]);
+    onAIConfigChange?.(config, modelAssignment);
+  }, [masterPasswordSet, secretsUnlocked, modelAssignment, onAIConfigChange]);
 
   const handleAiTest = useCallback(async () => {
     setAiTesting(true);
@@ -269,7 +277,13 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     setShowUnlockSheet(false);
     // Populate local state with decrypted secrets
     const key = SecretsStore.get('apiKey');
-    if (key) setAiConfig(prev => ({ ...prev, apiKey: key }));
+    if (key) {
+      setAiConfig(prev => {
+        const next = { ...prev, apiKey: key };
+        onAIConfigChange?.(next, modelAssignment);
+        return next;
+      });
+    }
     const pw = SecretsStore.get('webdavPassword');
     if (pw) {
       setWebdavConfig(prev => {
@@ -280,7 +294,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
     }
     showToast('已解锁');
     return true;
-  }, []);
+  }, [modelAssignment, onAIConfigChange]);
 
   const handleClearMasterPassword = useCallback(async () => {
     if (!confirm('清除主密码？加密的密钥将同时删除，需要重新输入 API Key。')) return;
@@ -360,7 +374,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           <div style={{
             background: 'var(--paper-deep)', padding: '4px 8px', borderRadius: 6,
             fontSize: 11, color: 'var(--ink-mute)',
-          }} className="mono">离线</div>
+          }} className="mono">本地</div>
         </div>
 
         <Section title={`${persona.name} · AI 助手`}>
@@ -370,7 +384,9 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
             value={settings.autoTag ? '开' : '关'}
             onClick={() => onChange({ ...settings, autoTag: !settings.autoTag })} />
           <Row icon={<I.bolt size={14} />} label="云端模型"
-            value={aiModels.length > 0 ? `${aiModels.length} 个模型` : '本地（离线）'} last />
+            value={isAIConfigured(aiConfig, modelAssignment)
+              ? (aiModels.length > 0 ? `${aiModels.length} 个模型` : '已配置')
+              : '本地（离线）'} last />
         </Section>
 
         {/* AI Provider */}

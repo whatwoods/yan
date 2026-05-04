@@ -34,6 +34,11 @@ export async function getAIConfig() {
   return config;
 }
 
+export function isAIConfigured(config, assignment = {}) {
+  if (!config?.apiKey || !config?.endpoint) return false;
+  return Boolean(config.defaultModel || config.models?.length || Object.values(assignment || {}).some(Boolean));
+}
+
 export async function getModelAssignment() {
   return (await getMeta('modelAssignment')) || {
     classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '',

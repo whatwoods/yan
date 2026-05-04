@@ -5,6 +5,7 @@ import { TOKENS, PERSONAS } from './tokens.jsx';
 import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
+import { getAIConfig, getModelAssignment, isAIConfigured } from './ai.js';
 
 const ListScreen = React.lazy(() => import('./screen-list.jsx').then(m => ({ default: m.ListScreen })));
 const DetailScreen = React.lazy(() => import('./screen-detail.jsx').then(m => ({ default: m.DetailScreen })));
@@ -19,6 +20,7 @@ export function App() {
   const [settings, setSettings] = useState(() => Store.loadSettings());
   const [route, setRoute] = useState('capture');
   const [showSetupHint, setShowSetupHint] = useState(() => Store.isFirstRun());
+  const [aiConfigured, setAiConfigured] = useState(false);
   const [openNoteId, setOpenNoteId] = useState(null);
   const [filterTag, setFilterTag] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,8 +45,16 @@ export function App() {
       try {
         await Store.init();
         if (cancelled) return;
+        const [aiConfig, assignment] = await Promise.all([getAIConfig(), getModelAssignment()]);
+        if (cancelled) return;
+        const ready = isAIConfigured(aiConfig, assignment);
         setNotes(Store.getNotes());
         setSettings(Store.loadSettings());
+        setAiConfigured(ready);
+        if (ready) {
+          Store.markRun();
+          setShowSetupHint(false);
+        }
       } catch (err) {
         console.error('Store.init() failed:', err);
       } finally {
@@ -183,6 +193,15 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const handleAIConfigChange = useCallback((config, assignment) => {
+    const ready = isAIConfigured(config, assignment);
+    setAiConfigured(ready);
+    if (ready) {
+      Store.markRun();
+      setShowSetupHint(false);
+    }
+  }, []);
+
   // ── Derived state (must be before any early returns) ──────
   const openNote_ = useMemo(() => notes.find((n) => n.id === openNoteId), [notes, openNoteId]);
 
@@ -215,7 +234,7 @@ export function App() {
             onSave={saveNewNote}
             onOpenNote={openNote}
             persona={persona}
-            showSetupHint={showSetupHint}
+            showSetupHint={showSetupHint && !aiConfigured}
             onDismissSetup={() => { Store.markRun(); setShowSetupHint(false); }}
             onGoSettings={() => { Store.markRun(); setShowSetupHint(false); setRoute('settings'); }}
           />
@@ -262,6 +281,7 @@ export function App() {
               onExport={onExport}
               onNavigate={setRoute}
               installPrompt={installPrompt}
+              onAIConfigChange={handleAIConfigChange}
             />
           )}
           {route === 'search' && (
