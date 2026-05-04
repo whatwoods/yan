@@ -1,7 +1,7 @@
 // screen-yan.jsx — 砚: insights main + chat overlay (FAB).
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { TOKENS } from './tokens.jsx';
+import { TOKENS, PERSONAS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
@@ -12,8 +12,9 @@ import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCura
 import { askYanRAG } from './rag.js';
 import { downloadElementLongScreenshot } from './export-screenshot.js';
 
-export function YanScreen({ notes, persona, onNavigate }) {
+export function YanScreen({ notes, onNavigate }) {
   const T = TOKENS, I = ICONS;
+  const persona = PERSONAS.yan;
   const [chatOpen, setChatOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const insightExportRef = useRef(null);
@@ -76,7 +77,7 @@ export function YanScreen({ notes, persona, onNavigate }) {
         {showMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 19 }} onClick={() => setShowMenu(false)} />}
       </div>
 
-      <YanInsightBody notes={notes} persona={persona} categories={categories} existingTags={existingTags} exportRef={insightExportRef} />
+      <YanInsightBody notes={notes} categories={categories} existingTags={existingTags} exportRef={insightExportRef} />
 
       {/* FAB to open chat */}
       {!chatOpen && (
@@ -120,7 +121,7 @@ export function YanScreen({ notes, persona, onNavigate }) {
                 <I.close size={20} />
               </button>
             </div>
-            <YanChatBody notes={notes} persona={persona} categories={categories} existingTags={existingTags} />
+            <YanChatBody notes={notes} categories={categories} existingTags={existingTags} />
           </div>
         </>
       )}
@@ -128,8 +129,9 @@ export function YanScreen({ notes, persona, onNavigate }) {
   );
 }
 
-function YanInsightBody({ notes, persona, categories, exportRef }) {
+function YanInsightBody({ notes, categories, exportRef }) {
   const T = TOKENS, I = ICONS;
+  const persona = PERSONAS.yan;
 
   const stats = useMemo(() => computeStats(notes), [notes]);
 
@@ -456,8 +458,9 @@ function YanInsightBody({ notes, persona, categories, exportRef }) {
   );
 }
 
-function YanChatBody({ notes, persona, categories, existingTags }) {
+function YanChatBody({ notes, categories, existingTags }) {
   const T = TOKENS, I = ICONS;
+  const persona = PERSONAS.yan;
   const [messages, setMessages] = useState([
     {
       role: 'assistant',

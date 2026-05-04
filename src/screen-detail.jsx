@@ -3,13 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { TOKENS, formatRelative, fullDate } from './tokens.jsx';
+import { TOKENS, PERSONAS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 
-export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, persona }) {
+export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete }) {
   const T = TOKENS, I = ICONS;
+  const persona = PERSONAS.yan;
 
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(note?.body || '');

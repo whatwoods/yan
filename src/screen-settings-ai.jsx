@@ -10,7 +10,7 @@ import { PROVIDERS, TASK_LABELS, fetchModels as aiFetchModels, getModelAssignmen
 import { Section, Row, PickerSheet, SubScrHead, inputStyle } from './settings-components.jsx';
 import { UnlockSheet } from './settings-security.jsx';
 
-export function AISettingsScreen({ onBack, persona, settings, onSettingsChange, onAIConfigChange }) {
+export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfigChange }) {
   const T = TOKENS, I = ICONS;
 
   const [aiConfig, setAiConfig] = useState({ provider: 'deepseek', endpoint: '', apiKey: '', models: [], defaultModel: '' });

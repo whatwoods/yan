@@ -1,12 +1,13 @@
 // screen-search.jsx — Search overlay with AI summary line.
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { TOKENS, formatRelative } from './tokens.jsx';
+import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { searchNotes } from './store.jsx';
 
-export function SearchScreen({ notes, onBack, onOpenNote, persona }) {
+export function SearchScreen({ notes, onBack, onOpenNote }) {
   const T = TOKENS, I = ICONS;
+  const persona = PERSONAS.yan;
 
   const [q, setQ] = useState('');
   const inputRef = useRef(null);

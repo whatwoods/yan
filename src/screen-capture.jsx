@@ -2,7 +2,7 @@
 // Three states: idle (small bar) → text (expanded textarea) → recording (live waveform inline).
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { TOKENS, formatRelative } from './tokens.jsx';
+import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
@@ -29,7 +29,8 @@ async function compressPhoto(file) {
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
 
-export function CaptureScreen({ notes, onSave, onOpenNote, persona, showSetupHint, onDismissSetup, onGoSettings, autoExpand, onAutoExpanded }) {
+export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDismissSetup, onGoSettings, autoExpand, onAutoExpanded }) {
+  const persona = PERSONAS.yan;
   const T = TOKENS, I = ICONS;
 
   const [mode, setMode] = useState('idle');

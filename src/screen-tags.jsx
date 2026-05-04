@@ -1,12 +1,13 @@
 // screen-tags.jsx — Tag/category browse with cloud.
 
 import React, { useMemo } from 'react';
-import { TOKENS } from './tokens.jsx';
+import { TOKENS, PERSONAS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { BrushTitle, Tag } from './components.jsx';
 
-export function TagsScreen({ notes, onBack, onPickTag, persona }) {
+export function TagsScreen({ notes, onBack, onPickTag }) {
   const T = TOKENS, I = ICONS;
+  const persona = PERSONAS.yan;
 
   const cats = useMemo(() => {
     const counts = {};

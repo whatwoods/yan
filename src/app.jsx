@@ -1,7 +1,7 @@
 // app.jsx — main React shell, routing, global state.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
-import { TOKENS, PERSONAS } from './tokens.jsx';
+import { TOKENS } from './tokens.jsx';
 import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
@@ -40,8 +40,6 @@ export function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  const persona = PERSONAS.yan;
-
   // ── Initialize Store (IndexedDB + migration) on mount ─────
   useEffect(() => {
     let cancelled = false;
@@ -67,11 +65,6 @@ export function App() {
     })();
     return () => { cancelled = true; };
   }, []);
-
-  // Apply persona color globally (for accent)
-  useEffect(() => {
-    document.documentElement.style.setProperty('--accent', persona.color);
-  }, [persona.color]);
 
   // Persist settings on change (debounced via effect)
   useEffect(() => {
@@ -117,9 +110,9 @@ export function App() {
         });
       }
       setNotes(Store.getNotes());
-      showToast(`${persona.name}已识其要意`);
+      showToast('砚已识其要意');
     }, 1500);
-  }, [settings.autoTag, persona.name, showSetupHint]);
+  }, [settings.autoTag, showSetupHint]);
 
   const updateNote = useCallback(async (id, patch) => {
     await Store.updateNote(id, patch);
@@ -239,7 +232,6 @@ export function App() {
             notes={notes}
             onSave={saveNewNote}
             onOpenNote={openNote}
-            persona={persona}
             showSetupHint={showSetupHint && !aiConfigured}
             onDismissSetup={() => { Store.markRun(); setShowSetupHint(false); }}
             onGoSettings={() => { Store.markRun(); setShowSetupHint(false); setRoute('settings-ai'); }}
@@ -268,13 +260,11 @@ export function App() {
               onBack={closeNote}
               onUpdate={updateNote}
               onDelete={deleteNote}
-              persona={persona}
             />
           )}
           {route === 'yan' && (
             <YanScreen
               notes={notes}
-              persona={persona}
               onNavigate={setRoute}
             />
           )}
@@ -296,14 +286,12 @@ export function App() {
               notes={notes}
               onBack={() => { setFilterTag(null); setRoute('list'); }}
               onOpenNote={openNote}
-              persona={persona}
             />
           )}
           {route === 'tags' && (
             <TagsScreen
               notes={notes}
               onBack={() => { setFilterTag(null); setRoute('list'); }}
-              persona={persona}
               onPickTag={(label) => {
                 setFilterTag(label);
                 setRoute('list');
@@ -319,7 +307,6 @@ export function App() {
           {route === 'settings-ai' && (
             <AISettingsScreen
               onBack={() => setRoute('settings')}
-              persona={persona}
               settings={settings}
               onSettingsChange={setSettings}
               onAIConfigChange={handleAIConfigChange}

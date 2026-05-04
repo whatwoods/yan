@@ -12,10 +12,7 @@ export const TOKENS = {
 };
 
 export const PERSONAS = {
-  yan:    { mark: '砚', name: '砚',   color: '#b8443a', desc: '安静的小印章', tone: '简短' },
-  zhi:    { mark: '知', name: '知',   color: '#3d5a7c', desc: '一位老学究',   tone: '考究' },
-  ming:   { mark: '茗', name: '茗',   color: '#5b7a5a', desc: '泡茶的友人',   tone: '温和' },
-  monkey: { mark: '猴', name: '小猴', color: '#c89342', desc: '好奇的助手',   tone: '活泼' },
+  yan: { mark: '砚', name: '砚', color: '#b8443a', desc: '安静的小印章', tone: '简短' },
 };
 
 // Format helpers
