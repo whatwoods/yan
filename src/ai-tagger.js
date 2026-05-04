@@ -54,7 +54,7 @@ export async function processNoteWithAI(note, categories) {
   try {
     const [category, tagResult, summary] = await Promise.all([
       classifyNote(note.body, categories),
-      extractTagsAndPeople(note.body),
+      extractTagsAndPeople(note.body, [], [], categories),
       generateSummary(note.body),
     ]);
     return {

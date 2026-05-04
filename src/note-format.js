@@ -1,6 +1,8 @@
 // note-format.js — Markdown frontmatter serialization for notes.
-// Lightweight custom YAML frontmatter parser (replaces gray-matter).
 // Frontmatter spec: tags as bare strings, ai as {summary, generated_at, model}.
+
+import YAML from 'yaml';
+export { generateId } from './note-id.js';
 
 // Tag label → color map (for reconstructing {label, color} objects on deserialize)
 const TAG_COLORS = {
@@ -8,15 +10,6 @@ const TAG_COLORS = {
   '身体': 'seal', '旅行': 'ochre', '想法': 'ink', '待办': 'seal',
   '摘抄': 'ochre', '感受': 'plum', '学习': 'indigo', '钱': 'ochre',
 };
-
-// ── ID generation ────────────────────────────────────────────
-
-export function generateId() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${yyyy}-${mm}-${crypto.randomUUID()}`;
-}
 
 // ── Path helpers (with traversal protection) ─────────────────
 
@@ -118,158 +111,22 @@ function filePathToId(filePath) {
   return basename.replace(/\.md$/, '');
 }
 
-// ── Custom YAML frontmatter parser ───────────────────────────
+// ── YAML frontmatter parser ──────────────────────────────────
 
 function parseFrontmatter(text) {
-  if (!text.startsWith('---')) return { data: {}, content: text };
-  const end = text.indexOf('\n---', 3);
-  if (end === -1) return { data: {}, content: text };
-  const yaml = text.slice(4, end);
-  const content = text.slice(end + 4).replace(/^\n/, '');
-  const data = parseSimpleYAML(yaml);
-  return { data, content };
+  const match = String(text).match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)([\s\S]*)$/);
+  if (!match) return { data: {}, content: text };
+
+  const parsed = YAML.parse(match[1]) || {};
+  const data = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  return { data, content: match[2] || '' };
 }
 
-function parseSimpleYAML(yaml) {
-  const result = {};
-  let currentKey = null;
-  let currentArray = null;
-  let currentNested = null;
-
-  for (const line of yaml.split('\n')) {
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-
-    const indent = line.search(/\S/);
-
-    // Indented array item: "  - value"
-    if (indent > 0 && /^\s*-\s/.test(line)) {
-      if (currentKey) {
-        if (!currentArray) {
-          currentArray = [];
-          result[currentKey] = currentArray;
-        }
-        currentArray.push(parseYAMLValue(line.replace(/^\s*-\s*/, '')));
-      }
-      continue;
-    }
-
-    // Indented key-value: "  key: value" (nested object or convert array to object)
-    if (indent > 0 && currentKey) {
-      const subMatch = line.match(/^\s+(\w+):\s*(.*)/);
-      if (subMatch) {
-        // If current key defaulted to empty array, convert to nested object
-        if (currentNested === null) {
-          currentNested = {};
-          result[currentKey] = currentNested;
-          currentArray = null;
-        }
-        currentNested[subMatch[1]] = parseYAMLValue(subMatch[2].trim());
-      }
-      continue;
-    }
-
-    // Top-level key-value
-    const match = line.match(/^(\w+):\s*(.*)/);
-    if (match) {
-      currentKey = match[1];
-      const val = match[2].trim();
-      currentArray = null;
-      currentNested = null;
-
-      if (val === '' || val === '[]') {
-        // Empty — could be start of array or nested object; default to array
-        currentArray = [];
-        result[currentKey] = currentArray;
-      } else {
-        result[currentKey] = parseYAMLValue(val);
-      }
-    }
-  }
-  return result;
-}
-
-function parseYAMLValue(val) {
-  if (val === 'true') return true;
-  if (val === 'false') return false;
-  if (val === 'null' || val === '~' || val === '') return null;
-  // Inline array: [a, b, c] or ['hello', "world"]
-  if (val.startsWith('[') && val.endsWith(']')) {
-    return parseInlineArray(val.slice(1, -1));
-  }
-  if (/^-?\d+$/.test(val)) return parseInt(val, 10);
-  if (/^-?\d+\.\d+$/.test(val)) return parseFloat(val);
-  // Remove surrounding quotes
-  if ((val.startsWith("'") && val.endsWith("'")) ||
-      (val.startsWith('"') && val.endsWith('"'))) {
-    return val.slice(1, -1);
-  }
-  return val;
-}
-
-function parseInlineArray(inner) {
-  const trimmed = inner.trim();
-  if (trimmed === '') return [];
-  const items = [];
-  let current = '';
-  let inQuote = null;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (inQuote) {
-      if (ch === inQuote) {
-        inQuote = null;
-      } else {
-        current += ch;
-      }
-    } else if (ch === "'" || ch === '"') {
-      inQuote = ch;
-    } else if (ch === ',') {
-      items.push(parseYAMLValue(current.trim()));
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  items.push(parseYAMLValue(current.trim()));
-  return items;
-}
-
-// ── Simple YAML serializer ───────────────────────────────────
+// ── YAML serializer ──────────────────────────────────────────
 
 function toYAML(data) {
-  const lines = ['---'];
-  for (const [key, val] of Object.entries(data)) {
-    if (val === undefined || val === null) continue;
-    if (Array.isArray(val)) {
-      if (val.length === 0) {
-        lines.push(`${key}: []`);
-      } else {
-        lines.push(`${key}:`);
-        for (const item of val) {
-          lines.push(`  - ${formatYAMLScalar(item)}`);
-        }
-      }
-    } else if (typeof val === 'object') {
-      lines.push(`${key}:`);
-      for (const [k, v] of Object.entries(val)) {
-        if (v === undefined || v === null) continue;
-        lines.push(`  ${k}: ${formatYAMLScalar(v)}`);
-      }
-    } else {
-      lines.push(`${key}: ${formatYAMLScalar(val)}`);
-    }
-  }
-  lines.push('---');
-  return lines.join('\n');
-}
-
-function formatYAMLScalar(val) {
-  if (typeof val === 'boolean' || typeof val === 'number') return String(val);
-  if (val === null || val === undefined) return 'null';
-  const s = String(val);
-  // Quote strings that could be misinterpreted or contain special chars
-  if (s === '' || /^[{[\-*?:,#&!|>'"%@`]/.test(s) ||
-      /^[\d.-]/.test(s) || /[?:]\s/.test(s) || s.includes('\n')) {
-    return `'${s.replace(/'/g, "''")}'`;
-  }
-  return s;
+  const compact = Object.fromEntries(
+    Object.entries(data).filter(([, val]) => val !== undefined && val !== null),
+  );
+  return `---\n${YAML.stringify(compact, { lineWidth: 0 }).trimEnd()}\n---`;
 }

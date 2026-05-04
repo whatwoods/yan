@@ -53,11 +53,12 @@ function useVirtualList(flatItems, containerRef, itemHeight, disabled) {
   return disabled ? null : range;
 }
 
-function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose, onTags, initialFilter }) {
+function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityChange, onCompose, onTags, onCategories, initialFilter }) {
   const T = TOKENS, I = ICONS;
 
   const [filter, setFilter] = useState(initialFilter || '全部');
   const [catFilter, setCatFilter] = useState('全部');
+  const [showMenu, setShowMenu] = useState(false);
   const [categories, setCategories] = useState([]);
   const [syncStatus, setSyncStatus] = useState('synced');
   const [syncing, setSyncing] = useState(false);
@@ -234,13 +235,56 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onCompose,
     <div className="screen paper">
       <ScrHead title="笔记本" right={
         <>
-          {SyncIcon}
-          <button className="icon-btn" onClick={handleSync} aria-label="同步" disabled={syncing}
-            style={syncing ? { animation: 'spin 1s linear infinite' } : undefined}>
-            <span style={{ fontSize: 18 }}>&#8635;</span>
-          </button>
           <button className="icon-btn" onClick={onSearch} aria-label="搜索"><I.search size={20} /></button>
-          <button className="icon-btn" onClick={onTags} aria-label="标签"><I.tag size={20} /></button>
+          <div style={{ position: 'relative' }}>
+            <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} aria-label="更多"><I.more size={20} /></button>
+            {showMenu && (
+              <div style={{
+                position: 'absolute', top: 44, right: 0,
+                background: 'var(--paper-light)', border: `1px solid var(--fold)`,
+                borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-deep)',
+                zIndex: 20, minWidth: 180,
+              }}>
+                <button onClick={() => { handleSync(); setShowMenu(false); }} style={{
+                  background: 'transparent', border: 'none',
+                  padding: '8px 12px', borderRadius: 8,
+                  fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink)',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  cursor: 'pointer', textAlign: 'left', width: '100%',
+                }}>
+                  <span style={{ fontSize: 14, animation: syncing ? 'spin 1s linear infinite' : undefined }}>&#8635;</span> 同步
+                </button>
+                <button onClick={() => { onCategories?.(); setShowMenu(false); }} style={{
+                  background: 'transparent', border: 'none',
+                  padding: '8px 12px', borderRadius: 8,
+                  fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink)',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  cursor: 'pointer', textAlign: 'left', width: '100%',
+                }}>
+                  <I.grid size={14} /> 分类管理
+                </button>
+                <button onClick={() => { onTags?.(); setShowMenu(false); }} style={{
+                  background: 'transparent', border: 'none',
+                  padding: '8px 12px', borderRadius: 8,
+                  fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink)',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  cursor: 'pointer', textAlign: 'left', width: '100%',
+                }}>
+                  <I.tag size={14} /> 标签管理
+                </button>
+                <button onClick={() => { onDensityChange?.(density === 'compact' ? 'comfy' : 'compact'); setShowMenu(false); }} style={{
+                  background: 'transparent', border: 'none',
+                  padding: '8px 12px', borderRadius: 8,
+                  fontFamily: T.fontSerif, fontSize: 13, color: 'var(--ink)',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  cursor: 'pointer', textAlign: 'left', width: '100%',
+                }}>
+                  <I.book size={14} /> 卡片密度：{density === 'compact' ? '紧凑' : '舒适'}
+                </button>
+              </div>
+            )}
+          </div>
+          {showMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 19 }} onClick={() => setShowMenu(false)} />}
         </>
       } />
 

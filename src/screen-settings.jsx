@@ -4,23 +4,19 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { ScrHead, showToast } from './components.jsx';
-import { Store, DEFAULT_CATEGORIES } from './store.jsx';
+import { Store } from './store.jsx';
 import { SecretsStore } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
 import { PROVIDERS, getModelAssignment, isAIConfigured } from './ai.js';
-import { Section, Row, PersonaSheet, FontSheet } from './settings-components.jsx';
+import { Section, Row } from './settings-components.jsx';
 import { MasterPasswordSheet, UnlockSheet } from './settings-security.jsx';
 
-export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExport, onClearAll, totalNotes, onNavigate, installPrompt, onAIConfigChange }) {
+export function SettingsScreen({ settings, onChange, onResetSeed, onExport, onClearAll, totalNotes, onNavigate, installPrompt, onAIConfigChange }) {
   const T = TOKENS, I = ICONS;
-
-  const [showPersona, setShowPersona] = useState(false);
-  const [showFont, setShowFont] = useState(false);
 
   // Summary data for top-level rows
   const [aiSummary, setAiSummary] = useState({ configured: false, provider: '', modelCount: 0 });
   const [webdavSummary, setWebdavSummary] = useState({ configured: false, lastSync: null });
-  const [categoryCount, setCategoryCount] = useState(DEFAULT_CATEGORIES.length);
 
   // Master password (stays on top level)
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
@@ -33,10 +29,9 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
   useEffect(() => {
     (async () => {
       try {
-        const [savedAi, savedWebdav, savedCats, savedLastSync, hasPw, savedAssignment] = await Promise.all([
+        const [savedAi, savedWebdav, savedLastSync, hasPw, savedAssignment] = await Promise.all([
           getMeta('aiConfig'),
           getMeta('webdavConfig'),
-          getMeta('categories'),
           getMeta('lastSync'),
           SecretsStore.isSetup(),
           getModelAssignment(),
@@ -57,7 +52,6 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
         } else if (savedLastSync) {
           setWebdavSummary(prev => ({ ...prev, lastSync: savedLastSync }));
         }
-        if (savedCats) setCategoryCount(savedCats.length);
       } catch {}
     })();
   }, []);
@@ -166,21 +160,6 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
           }} className="mono">本地</div>
         </div>
 
-        {/* 基础 */}
-        <Section title="基础">
-          <Row icon={persona.mark} accent={persona.color} label="人格"
-            value={persona.desc} onClick={() => setShowPersona(true)} />
-          <Row icon={<I.pen size={14} />} label="字体"
-            value={({ serif: '思源宋体', sans: '思源黑体', kai: '楷体', wenkai: '霞鹜文楷' })[settings.font] || '思源宋体'}
-            onClick={() => setShowFont(true)} />
-          <Row icon={<I.book size={14} />} label="卡片密度"
-            value={settings.density === 'compact' ? '紧凑' : '舒适'}
-            onClick={() => onChange({ ...settings, density: settings.density === 'compact' ? 'comfy' : 'compact' })} />
-          <Row icon={<I.tag size={14} />} label="管理分类"
-            value={`${categoryCount} 个`}
-            onClick={() => onNavigate?.('settings-categories')} last />
-        </Section>
-
         {/* 同步 · 安全 */}
         <Section title="云端">
           <Row icon={<I.sparkle size={14} />} label="AI 助手"
@@ -252,18 +231,6 @@ export function SettingsScreen({ settings, onChange, onResetSeed, persona, onExp
       </div>
 
       {/* Bottom sheets */}
-      {showPersona && (
-        <PersonaSheet current={settings.persona} onPick={(p) => {
-          onChange({ ...settings, persona: p });
-          setShowPersona(false);
-        }} onClose={() => setShowPersona(false)} />
-      )}
-      {showFont && (
-        <FontSheet current={settings.font} onPick={(f) => {
-          onChange({ ...settings, font: f });
-          setShowFont(false);
-        }} onClose={() => setShowFont(false)} />
-      )}
       {showMasterPwSheet && (
         <MasterPasswordSheet isChange={masterPasswordSet}
           onSubmit={handleSetMasterPassword}

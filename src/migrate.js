@@ -2,7 +2,7 @@
 // Run once on app startup; sets meta.migrated = true so it won't repeat.
 
 import { getDB, putNote, setMeta, getMeta } from './db.js';
-import { generateId } from './note-format.js';
+import { generateId } from './note-id.js';
 import { TAG_TO_CATEGORY } from './store.jsx';
 
 const STORAGE_NOTES = 'yan.notes.v1';

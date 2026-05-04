@@ -1,7 +1,7 @@
 // screen-yan.jsx — 砚: insights main + chat overlay (FAB).
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { TOKENS, PERSONAS } from './tokens.jsx';
+import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
@@ -12,7 +12,7 @@ import { generateCuratorSuggestions, shouldRunCurator, markCuratorRun, applyCura
 import { askYanRAG } from './rag.js';
 import { downloadElementLongScreenshot } from './export-screenshot.js';
 
-export function YanScreen({ notes, persona, personaKey, onPersonaChange, onNavigate }) {
+export function YanScreen({ notes, persona, onNavigate }) {
   const T = TOKENS, I = ICONS;
   const [chatOpen, setChatOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -64,24 +64,6 @@ export function YanScreen({ notes, persona, personaKey, onPersonaChange, onNavig
               borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-deep)',
               zIndex: 20, minWidth: 200,
             }}>
-              {/* Persona row */}
-              <div style={{ display: 'flex', gap: 6, padding: '6px 8px', justifyContent: 'center' }}>
-                {Object.entries(PERSONAS).map(([id, p]) => (
-                  <button key={id} onClick={() => { onPersonaChange?.(id); setShowMenu(false); }}
-                    style={{
-                      background: 'transparent', border: `2px solid ${personaKey === id ? p.color : 'transparent'}`,
-                      borderRadius: 10, padding: 4, cursor: 'pointer',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                      opacity: personaKey === id ? 1 : .55,
-                      transition: 'opacity .15s, border-color .15s',
-                    }}>
-                    <SealStamp size={28} text={p.mark} color={p.color} />
-                    <span style={{ fontSize: 9, color: 'var(--ink-mute)', fontFamily: T.fontSerif }}>{p.name}</span>
-                  </button>
-                ))}
-              </div>
-              <div style={{ height: 1, background: 'var(--fold)', margin: '4px 8px' }} />
-              {/* Actions */}
               <button onClick={handleExport} style={menuItem(T)}>
                 <I.clip size={14} /> 导出洞察长图
               </button>

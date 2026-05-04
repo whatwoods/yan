@@ -40,7 +40,7 @@ export function App() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  const persona = PERSONAS[settings.persona] || PERSONAS.yan;
+  const persona = PERSONAS.yan;
 
   // ── Initialize Store (IndexedDB + migration) on mount ─────
   useEffect(() => {
@@ -67,18 +67,6 @@ export function App() {
     })();
     return () => { cancelled = true; };
   }, []);
-
-  // Apply font choice via CSS var
-  useEffect(() => {
-    const T = TOKENS;
-    const fontMap = {
-      wenkai: T.fontSerif,
-      serif: '"Noto Serif SC", "Songti SC", serif',
-      sans: T.fontSans,
-    };
-    document.body.style.fontFamily = fontMap[settings.font] || T.fontSerif;
-    document.documentElement.style.setProperty('--font-body', fontMap[settings.font] || T.fontSerif);
-  }, [settings.font]);
 
   // Apply persona color globally (for accent)
   useEffect(() => {
@@ -265,9 +253,11 @@ export function App() {
               notes={notes}
               initialFilter={listInitialFilter}
               density={settings.density}
+              onDensityChange={(d) => setSettings({ ...settings, density: d })}
               onOpenNote={openNote}
               onSearch={goSearch}
               onTags={goTags}
+              onCategories={() => setRoute('settings-categories')}
               onCompose={() => { setAutoExpandInput(true); setRoute('capture'); }}
             />
           )}
@@ -285,15 +275,12 @@ export function App() {
             <YanScreen
               notes={notes}
               persona={persona}
-              personaKey={settings.persona}
-              onPersonaChange={(p) => setSettings({ ...settings, persona: p })}
               onNavigate={setRoute}
             />
           )}
           {route === 'settings' && (
             <SettingsScreen
               settings={settings}
-              persona={persona}
               totalNotes={notes.length}
               onChange={setSettings}
               onResetSeed={onResetSeed}

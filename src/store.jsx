@@ -8,7 +8,7 @@ import {
   getDeviceFingerprint,
 } from './db.js';
 import { migrate } from './migrate.js';
-import { generateId } from './note-format.js';
+import { generateId } from './note-id.js';
 
 // Re-export from extracted modules so existing consumers keep working
 export { buildSearchIndex, searchNotes, rebuildSearchIndex, addNoteToIndex, updateNoteInIndex, removeNoteFromIndex } from './search.js';
@@ -19,6 +19,12 @@ import { buildSearchIndex, addNoteToIndex, updateNoteInIndex, removeNoteFromInde
 import { TAG_TO_CATEGORY } from './tag-colors.js';
 
 const STORAGE_FIRST_RUN = 'yan.firstRun.v1';
+const DEFAULT_SETTINGS = {
+  theme: 'paper',
+  autoTag: true,
+  density: 'comfy',
+};
+const REMOVED_SETTING_KEYS = ['persona', 'font'];
 
 // ── Default categories ───────────────────────────────────────
 
@@ -151,15 +157,7 @@ export const Store = {
         settings = JSON.parse(localStorage.getItem('yan.settings.v1') || 'null');
       } catch (e) { console.warn('[store] 读取本地设置失败:', e); }
     }
-    if (!settings) {
-      settings = {
-        persona: 'yan',
-        theme: 'paper',
-        font: 'serif',
-        autoTag: true,
-        density: 'comfy',
-      };
-    }
+    settings = sanitizeSettings(settings);
     Store._settings = settings;
     // Persist to IndexedDB for future reads
     await setMeta('settings', settings);
@@ -286,17 +284,16 @@ export const Store = {
     // Synchronous fallback for initial render before init() completes
     if (Store._settings) return Store._settings;
     try {
-      return JSON.parse(localStorage.getItem('yan.settings.v1') || 'null') || {
-        persona: 'yan', theme: 'paper', font: 'wenkai', autoTag: true, density: 'comfy',
-      };
+      return sanitizeSettings(JSON.parse(localStorage.getItem('yan.settings.v1') || 'null'));
     } catch {
-      return { persona: 'yan', theme: 'paper', font: 'serif', autoTag: true, density: 'comfy' };
+      return { ...DEFAULT_SETTINGS };
     }
   },
 
   async saveSettings(s) {
-    Store._settings = s;
-    await setMeta('settings', s);
+    const settings = sanitizeSettings(s);
+    Store._settings = settings;
+    await setMeta('settings', settings);
   },
 
   // ── Categories ──────────────────────────────────────────
@@ -339,6 +336,14 @@ function ensureCompat(note) {
     note.duration = null;
   }
   return note;
+}
+
+function sanitizeSettings(settings) {
+  const next = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  for (const key of REMOVED_SETTING_KEYS) {
+    delete next[key];
+  }
+  return next;
 }
 
 function guessCategoryFromTags(tags) {

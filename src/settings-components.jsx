@@ -1,9 +1,8 @@
 // settings-components.jsx — Reusable UI primitives for settings screens.
 
 import React from 'react';
-import { TOKENS, PERSONAS } from './tokens.jsx';
+import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp } from './components.jsx';
 
 // ── Section ───────────────────────────────────────────────────
 
@@ -122,98 +121,6 @@ export function PickerSheet({ title, options, current, onSelect, onClose }) {
                 {current === opt.value && (
                   <span style={{ color: 'var(--seal)', fontSize: 14, fontWeight: 600 }}>选</span>
                 )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── PersonaSheet ──────────────────────────────────────────────
-
-export function PersonaSheet({ current, onPick, onClose }) {
-  const T = TOKENS;
-  return (
-    <>
-      <div className="sheet-mask" onClick={onClose} />
-      <div className="sheet" style={{ height: 'auto', maxHeight: '70%' }}>
-        <div className="sheet-grip" />
-        <div style={{ padding: '0 24px 24px' }}>
-          <div style={{
-            fontSize: 12, color: 'var(--ink-mute)',
-            letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
-            fontFamily: T.fontSerif,
-          }}>选一个砚的样子</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Object.entries(PERSONAS).map(([id, p]) => (
-              <button key={id} onClick={() => onPick(id)} style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: 12, borderRadius: 14,
-                background: current === id ? 'var(--paper-deep)' : 'var(--paper-light)',
-                border: `1.5px solid ${current === id ? p.color : 'var(--fold)'}`,
-                cursor: 'pointer', textAlign: 'left',
-              }}>
-                <SealStamp size={42} text={p.mark} color={p.color} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: T.fontSerif, fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>
-                    {p.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
-                    {p.desc} · {p.tone}
-                  </div>
-                </div>
-                {current === id && (
-                  <div style={{ color: p.color, fontSize: 14, fontWeight: 600 }}>选</div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── FontSheet ─────────────────────────────────────────────────
-
-export function FontSheet({ current, onPick, onClose }) {
-  const T = TOKENS;
-  const fonts = [
-    ['wenkai', '霞鹜文楷', T.fontSerif, '文艺 · 温润'],
-    ['serif',  '思源宋体', '"Noto Serif SC", "Songti SC", serif', '经典 · 端庄'],
-    ['sans',   '思源黑体', T.fontSans,  '现代 · 清晰'],
-  ];
-  return (
-    <>
-      <div className="sheet-mask" onClick={onClose} />
-      <div className="sheet" style={{ height: 'auto', maxHeight: '70%' }}>
-        <div className="sheet-grip" />
-        <div style={{ padding: '0 24px 24px' }}>
-          <div style={{
-            fontSize: 12, color: 'var(--ink-mute)',
-            letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 14,
-            fontFamily: T.fontSerif,
-          }}>字体</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {fonts.map(([id, name, ff, hint]) => (
-              <button key={id} onClick={() => onPick(id)} style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '14px 16px', borderRadius: 12,
-                background: current === id ? 'var(--paper-deep)' : 'var(--paper-light)',
-                border: `1.5px solid ${current === id ? 'var(--seal)' : 'var(--fold)'}`,
-                cursor: 'pointer', textAlign: 'left',
-              }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: ff, fontSize: 18, color: 'var(--ink)' }}>
-                    {name}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2, fontFamily: T.fontSans }}>
-                    {hint}
-                  </div>
-                </div>
-                {current === id && <span style={{ color: 'var(--seal)', fontWeight: 600 }}>选</span>}
               </button>
             ))}
           </div>
