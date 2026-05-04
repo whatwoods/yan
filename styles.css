@@ -283,6 +283,10 @@ html, body {
   position: relative;
   z-index: 30;
 }
+.detail-head {
+  position: relative;
+  z-index: 30;
+}
 
 /* Animations */
 @keyframes fadeup {

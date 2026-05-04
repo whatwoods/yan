@@ -55,7 +55,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, perso
   return (
     <div className="screen paper">
       {/* Top bar */}
-      <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div className="detail-head" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <button className="icon-btn" onClick={onBack} aria-label="返回"><I.back size={22} /></button>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', position: 'relative' }}>
           <button className="icon-btn" onClick={togglePin} aria-label="钉住"
@@ -329,4 +329,3 @@ function menuItem(T) {
     cursor: 'pointer', textAlign: 'left',
   };
 }
-
