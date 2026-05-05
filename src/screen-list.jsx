@@ -16,8 +16,8 @@ const ITEM_H_COMPACT = 80;
 const HEADER_H = 36;
 const BUFFER = 6;
 
-const TOP_CAT_COUNT = 5;
-const CONTEXT_TAG_COUNT = 6;
+const TOP_CAT_COUNT = 4;
+const CONTEXT_TAG_COUNT = 4;
 
 function useVirtualList(flatItems, containerRef, itemHeight, disabled) {
   const [range, setRange] = useState({ start: 0, end: 30 });
@@ -535,11 +535,11 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
             className={`category-tab ${catFilter === '全部' ? 'active' : ''}`}
             onClick={() => { setCatFilter('全部'); }}
             style={{
-              color: catFilter === '全部' ? 'var(--ink)' : 'var(--ink-soft)',
+              color: catFilter === '全部' ? 'var(--paper)' : 'var(--ink-soft)',
               borderColor: catFilter === '全部' ? 'var(--ink)' : 'var(--fold)',
               background: catFilter === '全部' ? 'var(--ink)' : 'transparent',
             }}>
-            {catFilter === '全部' ? <span style={{ color: 'var(--paper)' }}>全部</span> : '全部'}
+            全部
             <span className="mono" style={{ fontSize: 11, opacity: .6 }}>{notes.length}</span>
           </button>
           {topCats.map(([name, count]) => {
@@ -601,7 +601,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                 border: `1px solid ${active ? 'var(--ink)' : 'var(--fold)'}`,
                 background: active ? 'var(--ink)' : 'transparent',
                 color: active ? 'var(--paper)' : 'var(--ink-soft)',
-                padding: '5px 12px', borderRadius: 999, fontSize: 13,
+                padding: '4px 10px', borderRadius: 999, fontSize: 13,
                 fontFamily: T.fontSerif, whiteSpace: 'nowrap', flexShrink: 0,
                 cursor: 'pointer',
               }}>
@@ -915,6 +915,7 @@ const NoteCard = React.memo(function NoteCard({ note, pad, catColor, onOpen, vir
         {note.body && (
           <div style={{
             fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.55, marginBottom: 8,
+            fontFamily: T.fontSerif,
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}>{note.body}</div>

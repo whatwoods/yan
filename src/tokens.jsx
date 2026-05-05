@@ -12,7 +12,7 @@ export const TOKENS = {
 };
 
 export const PERSONAS = {
-  yan: { mark: '砚', name: '砚', color: '#b8443a', desc: '安静的小印章', tone: '简短' },
+  yan: { mark: '砚', name: '砚', color: '#b8443a', desc: '安静的小砚台', tone: '简短' },
 };
 
 // Format helpers

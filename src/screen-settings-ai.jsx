@@ -228,12 +228,6 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
               )}
             </Section>
 
-            <Section title="行为">
-              <Row icon={<I.tag size={14} />} label="自动识别打标签"
-                value={settings.autoTag ? '开' : '关'}
-                onClick={() => onSettingsChange({ ...settings, autoTag: !settings.autoTag })} last />
-            </Section>
-
             {aiModels.length > 0 && (
               <>
                 {['simple', 'normal', 'complex'].map((groupKey, groupIdx) => {

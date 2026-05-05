@@ -27,10 +27,9 @@ import {
 const STORAGE_FIRST_RUN = 'yan.firstRun.v1';
 const DEFAULT_SETTINGS = {
   theme: 'paper',
-  autoTag: true,
   density: 'comfy',
 };
-const REMOVED_SETTING_KEYS = ['persona', 'font'];
+const REMOVED_SETTING_KEYS = ['persona', 'font', 'autoTag'];
 
 // ── Default categories ───────────────────────────────────────
 

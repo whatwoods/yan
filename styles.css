@@ -590,7 +590,7 @@ mark {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 14px;
+  padding: 4px 10px;
   border-radius: 999px;
   font-size: 13px;
   font-family: var(--font-serif);

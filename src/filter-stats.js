@@ -82,13 +82,13 @@ export function getTagsForCategory(catName, tagsByCat, globalTagCounts) {
     // 全局高频标签
     return Object.entries(globalTagCounts)
       .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 6)
+      .slice(0, 4)
       .map(([label, v]) => ({ label, color: v.color, count: v.count }));
   }
   const catTags = tagsByCat.get(catName);
   if (!catTags) return [];
   return Object.entries(catTags)
     .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 6)
+    .slice(0, 4)
     .map(([label, v]) => ({ label, color: v.color, count: v.count }));
 }

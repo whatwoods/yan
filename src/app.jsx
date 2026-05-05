@@ -124,7 +124,7 @@ export function App() {
       kind: draft.kind || 'text',
       title: autoTitle(body),
       body,
-      tags: settings.autoTag ? autoTags(body) : [],
+      tags: autoTags(body),
       summary: '',
       people: extractPeople(body),
       pinned: false,
@@ -145,13 +145,13 @@ export function App() {
         aiResult = await processNoteWithAI(addedNote, categories, Store.getNotes());
       }
       if (aiResult) {
-        const patch = settings.autoTag ? aiResult : { ...aiResult, tags: addedNote.tags || [] };
+        const patch = aiResult;
         await Store.updateNote(addedNote.id, patch);
       } else {
         // Rule-based fallback
         await Store.updateNote(addedNote.id, {
           category: addedNote.category || '想法',
-          tags: settings.autoTag ? autoTags(body) : (addedNote.tags || []),
+          tags: autoTags(body),
           summary: autoSummary(body),
           people: extractPeople(body),
         });
@@ -159,7 +159,7 @@ export function App() {
 
       showToast('砚已识其要意');
     }, 1500);
-  }, [aiConfigured, settings.autoTag, showSetupHint]);
+  }, [aiConfigured, showSetupHint]);
 
   const updateNote = useCallback(async (id, patch) => {
     await Store.updateNote(id, patch);
