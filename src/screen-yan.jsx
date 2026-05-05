@@ -557,10 +557,9 @@ function YanChatBody({ notes, categories, existingTags, persona }) {
               display: 'flex', gap: 4, alignItems: 'center',
             }}>
               {[0, 1, 2].map((i) => (
-                <span key={i} style={{
-                  width: 6, height: 6, borderRadius: '50%', background: persona.color,
-                  animation: `pulse 1s ${i * 0.15}s infinite`, opacity: .7,
-                }} />
+                <span key={i} className="dot-pulse" style={{
+                  fontSize: 16, color: persona.color, animationDelay: `${i * 0.15}s`,
+                }}>·</span>
               ))}
             </div>
           </div>

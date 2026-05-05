@@ -354,23 +354,23 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
     }
   }, [handleSync]);
 
-  // Sync status indicator component
-  const SyncIcon = useMemo(() => {
+  // Sync status pill — only visible during sync or on error
+  const SyncPill = useMemo(() => {
     if (syncing) {
-      return <span style={{ fontSize: 12, color: 'var(--ink-mute)', animation: 'spin 1s linear infinite' }}>&#8635;</span>;
+      return (
+        <span className="status-pill status-pill--syncing" key="syncing">
+          <span style={{ fontSize: 12, animation: 'spin 1s linear infinite', display: 'inline-block' }}>&#8635;</span> 同步中
+        </span>
+      );
     }
     if (syncStatus === 'error') {
       return (
-        <button className="icon-btn" onClick={() => showToast('同步失败 · 请检查 WebDAV 配置')} aria-label="同步错误"
-          style={{ width: 28, height: 28, color: 'var(--seal)' }}>
-          <span style={{ fontSize: 16, fontWeight: 700 }}>!</span>
-        </button>
+        <span className="status-pill status-pill--error" key="error">
+          <span style={{ fontSize: 12, fontWeight: 700 }}>!</span> 同步失败
+        </span>
       );
     }
-    if (syncStatus === 'pending') {
-      return <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--ochre)', display: 'inline-block' }} />;
-    }
-    return <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--bamboo)', display: 'inline-block' }} />;
+    return null;
   }, [syncStatus, syncing]);
 
   // Load categories from Store on mount
@@ -458,6 +458,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
     <div className="screen paper">
       <ScrHead title="笔记本" right={
         <>
+          {SyncPill}
           <button className="icon-btn" onClick={onSearch} aria-label="搜索"><I.search size={20} /></button>
           <div style={{ position: 'relative' }}>
             <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} aria-label="更多"><I.more size={20} /></button>
@@ -513,7 +514,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
 
       {/* Conflict banner */}
       {conflictCount > 0 && (
-        <div style={{
+        <div className="slide-up" style={{
           margin: '0 20px 8px', padding: '8px 12px',
           background: 'rgba(200,147,66,.1)', border: '1px solid rgba(200,147,66,.25)',
           borderRadius: 10, fontSize: 12, color: 'var(--ochre)',

@@ -590,7 +590,7 @@ function OrganizeMenuItems({ note, onOrganize, onRestore, disabled, aiConfigured
           cursor: canOrganize ? 'pointer' : 'default',
         }}
       >
-        <I.sparkle size={14} /> AI 重构
+        <I.refresh size={14} /> AI 重构
       </button>
       {hasOrganized && (
         <button onClick={onRestore} style={menuItem(T)}>
