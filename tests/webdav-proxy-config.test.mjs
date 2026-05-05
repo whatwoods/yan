@@ -32,4 +32,5 @@ test('WebDAV proxy resolver preserves provider base paths', () => {
 
 test('service worker bypasses WebDAV proxy traffic', () => {
   assert.match(serviceWorkerSource, /url\.pathname\.startsWith\('\/dav\/'\)/);
+  assert.match(serviceWorkerSource, /url\.pathname\.startsWith\('\/api\/'\)/);
 });

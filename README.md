@@ -1,16 +1,16 @@
 # 砚
 
-**会思考的本地优先笔记本。** 砚是一款移动端优先的 PWA 笔记应用：随手记录文字、语音和照片，本地保存到 IndexedDB，再按需用你自己的 AI Key 做标题、分类、标签、摘要、问答和月度洞察。同步走 WebDAV，笔记以 Markdown + YAML frontmatter 形式落在你自己的存储里。
+**会思考的本地优先笔记本。** 砚是一款移动端优先的 PWA 笔记应用：随手记录文字、语音和照片，本地保存到 IndexedDB，再按需用你自己的 AI Key 做标题、分类、标签、摘要、问答和月度洞察。同步走 WebDAV，笔记以 Markdown + YAML frontmatter 形式落在你自己的存储里；部署到 Cloudflare Pages 时可用 Pages Functions 补齐 WebDAV 代理和 Workers AI 语音转写。
 
 ## 当前能力
 
-- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音优先使用 Web Speech API，缺失时尝试走 OpenAI 兼容的音频转写接口；长文本可进入全屏落笔，并支持列表自动编号续写。
+- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音优先使用 Web Speech API，缺失时走同源 `/api/transcribe` 的 Cloudflare Workers AI 转写；长文本可进入全屏落笔，并支持列表自动编号续写。
 - **自动整理**：保存后先本地生成标题、标签、人物线索和摘要；配置 AI 后可执行分类、取标题、打标签、摘要生成和人物提取，并按任务分配不同模型。
 - **笔记本视图**：按时间线浏览，支持置顶、分类筛选、上下文标签筛选、全文搜索、标签管理、卡片密度切换、100 条以上虚拟列表、下拉同步、左滑钉住/删除和长按菜单。
 - **详情编辑**：详情页支持 Markdown 渲染、分类切换、相关笔记、全屏编辑、左右滑动翻页、软删除和回收站恢复。
 - **问砚与洞察**：砚页提供本月统计、热力图、常用标签、AI 月度洞察、问砚 RAG 问答和洞察长图导出。
 - **Tag Curator**：AI 定期分析标签统计和共现关系，给出合并、重命名、归档、新增等整理建议；标签管理页也会提示本地可判断的相似标签。
-- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，双向同步笔记、照片附件、分类、洞察、偏好和回收站，并把冲突副本写入远程 `conflicts/`。
+- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，本地由 Vite 代理，Cloudflare Pages 生产环境由 Pages Function 代理；双向同步笔记、照片附件、分类、洞察、偏好和回收站，并把冲突副本写入远程 `conflicts/`。
 - **数据管理**：设置页提供 Markdown 导出、分类管理、回收站、示例数据重置、全量清空、PWA 安装入口和主密码管理。
 - **隐私优先**：应用没有自带后端；笔记默认只在本机 IndexedDB，AI 请求只发往你配置的供应商，敏感 Key 可用主密码加密。
 - **离线可用**：Service Worker 缓存应用壳和构建产物，支持 PWA 安装和离线读写。
@@ -31,7 +31,7 @@ npm run build
 npm run preview
 ```
 
-本地开发默认由 Vite 提供地址，通常是 `http://localhost:5173/`。生产构建输出到 `dist/`，可部署到任何静态托管。
+本地开发默认由 Vite 提供地址，通常是 `http://localhost:5173/`。生产构建输出到 `dist/`；如果要使用 WebDAV 代理或 Workers AI 转写，部署目标需要支持 Cloudflare Pages Functions。
 
 ## 验证命令
 
@@ -43,14 +43,15 @@ npm run build
 node --test tests/*.test.mjs
 ```
 
-`package.json` 目前只定义了 `dev`、`build`、`preview` 三个脚本，所以测试命令暂时需要直接调用 `node --test`。现有测试覆盖长图导出、Markdown frontmatter、WebDAV 代理、个性化设置移除和详情页层级关系。
+`package.json` 目前只定义了 `dev`、`build`、`preview` 三个脚本，所以测试命令暂时需要直接调用 `node --test`。现有测试覆盖长图导出、Markdown frontmatter、WebDAV 代理、Cloudflare Pages Functions、个性化设置移除和详情页层级关系。
 
 ## 运行要求
 
 - Node.js 18+。
 - 现代浏览器，需支持 IndexedDB、Web Crypto、Service Worker、MediaRecorder 或 Web Speech API。
 - PWA、麦克风、摄像头和 Service Worker 在生产环境需要 HTTPS；`localhost` 开发环境除外。
-- AI 供应商需要允许浏览器跨域访问；WebDAV 在本地开发和 `vite preview` 下走内置同源代理，生产部署需要提供同等的 `/dav/<encoded-server>/...` 反向代理，或使用本身允许浏览器跨域访问的 WebDAV 服务。
+- AI 供应商需要允许浏览器跨域访问；WebDAV 在本地开发和 `vite preview` 下走内置同源代理，Cloudflare Pages 生产环境通过 `functions/dav/[[path]].js` 提供同等 `/dav/<encoded-server>/...` 反向代理。
+- Cloudflare Workers AI 转写需要给 Pages 项目绑定名为 `AI` 的 Workers AI binding；本地调试 Pages Functions 时使用 `wrangler pages dev dist --ai=AI`。
 
 ## 配置项
 
@@ -73,7 +74,7 @@ node --test tests/*.test.mjs
 
 ### WebDAV
 
-WebDAV 配置包含服务器地址、用户名、密码和远程根路径，默认根路径是 `/yan`。开发环境和 `vite preview` 会把浏览器请求从同源 `/dav/<encoded-server>/...` 转发到真实服务器，避免坚果云这类服务缺少 CORS 响应头导致 `PROPFIND` 预检失败。Service Worker 会跳过 `/dav/` 流量，不缓存同步请求。同步路径约定如下：
+WebDAV 配置包含服务器地址、用户名、密码和远程根路径，默认根路径是 `/yan`。开发环境和 `vite preview` 会把浏览器请求从同源 `/dav/<encoded-server>/...` 转发到真实服务器，Cloudflare Pages 生产环境由 `functions/dav/[[path]].js` 负责同样的转发，避免坚果云这类服务缺少 CORS 响应头导致 `PROPFIND` 预检失败。Service Worker 会跳过 `/dav/` 流量，不缓存同步请求。同步路径约定如下：
 
 ```text
 <root>/notes/<year>/<month>/<id>.md        # 正常笔记
@@ -83,6 +84,22 @@ WebDAV 配置包含服务器地址、用户名、密码和远程根路径，默�
 <root>/insights/<YYYY-MM>.md               # 月度洞察
 <root>/preferences.md                      # 偏好
 <root>/conflicts/<local|remote>-<modified>-<id>.md  # 冲突副本
+```
+
+Cloudflare 代理默认只允许 `https:` WebDAV 目标，并拒绝 localhost、内网 IP 等私有目标，避免把站点变成内网探测代理。可选环境变量：
+
+- `DAV_ALLOWED_HOSTS`：逗号分隔的允许域名列表，例如 `dav.jianguoyun.com,example.com`；不配置时允许公网 HTTPS 主机。
+- `DAV_ALLOW_INSECURE_HTTP=1`：允许代理 `http:` 目标，仅用于明确知道风险的自建环境。
+
+### Cloudflare Workers AI 转写
+
+没有 Web Speech API 的浏览器会用 MediaRecorder 录制 `audio/webm`，停止录音后把整段音频 POST 到同源 `/api/transcribe`。Cloudflare Pages Function 读取音频后调用 `context.env.AI.run('@cf/openai/whisper', { audio })`，返回 `{ text }` 给前端。旧的第三方音频转写兜底已经删除；如果 Pages Function 或 `AI` binding 不可用，前端会提示转写失败。
+
+Pages 项目需要在 Cloudflare 控制台添加 Workers AI binding，变量名必须是 `AI`。仓库的 `wrangler.toml` 已声明：
+
+```toml
+[ai]
+binding = "AI"
 ```
 
 ### 主密码
@@ -136,7 +153,7 @@ ai:
 | 长图导出 | `html2canvas` |
 | 加密 | Web Crypto API（PBKDF2 + AES-GCM） |
 | AI 协议 | OpenAI 兼容 `/v1/chat/completions` |
-| 语音转写 | Web Speech API，或 OpenAI 兼容 `/v1/audio/transcriptions` |
+| 语音转写 | Web Speech API，Cloudflare Workers AI `/api/transcribe` |
 | 同步 | 浏览器 fetch + 同源 WebDAV 代理 |
 | PWA | Web App Manifest + Service Worker |
 
@@ -147,6 +164,10 @@ ai:
 ├── index.html                 # HTML 入口、CSP、PWA 注册
 ├── styles.css                 # 全局样式和移动端布局
 ├── vite.config.js             # Vite 配置，base='./'
+├── wrangler.toml              # Cloudflare Pages Functions 和 Workers AI binding
+├── functions/
+│   ├── api/transcribe.js      # Workers AI 语音转写接口
+│   └── dav/[[path]].js        # Cloudflare Pages WebDAV 代理
 ├── public/
 │   ├── manifest.webmanifest   # PWA manifest
 │   ├── sw.js                  # 离线缓存 Service Worker
@@ -187,7 +208,8 @@ ai:
 │   ├── export-screenshot.test.mjs
 │   ├── note-format.test.mjs
 │   ├── personalization-removal.test.mjs
-│   └── webdav-proxy-config.test.mjs
+│   ├── webdav-proxy-config.test.mjs
+│   └── cloudflare-functions.test.mjs
 └── docs/
     ├── specs/                 # 产品规格
     └── superpowers/           # 实现计划
@@ -195,7 +217,7 @@ ai:
 
 ## 部署
 
-这是纯静态应用。运行 `npm run build` 后，把 `dist/` 部署到 Cloudflare Pages、Vercel、GitHub Pages、Nginx 或任意静态托管即可。
+核心前端仍是静态 Vite 应用。运行 `npm run build` 后，把 `dist/` 部署到 Cloudflare Pages；WebDAV 代理和 Workers AI 转写依赖仓库根目录的 `functions/`，因此生产部署建议使用 Cloudflare Pages Git 集成或 Wrangler，而不是只上传 `dist/`。
 
 注意事项：
 
@@ -203,7 +225,7 @@ ai:
 - `vite.config.js` 使用 `base: './'`，适合部署到子路径；本地开发和 `vite preview` 还会挂载 WebDAV 同源代理。
 - `index.html` 的 CSP 允许 `connect-src 'self' https:`，AI 和 WebDAV endpoint 需要使用 HTTPS。
 - 静态托管必须能正确提供 `manifest.webmanifest`、`sw.js`、PWA 图标和 `assets/*`。
-- 纯静态托管无法替第三方 WebDAV 补 CORS。生产环境若要支持坚果云等服务，需要在同一域名下配置 `/dav/<encoded-server>/...` 反向代理，并确保该路径不被 Service Worker 或 CDN 缓存。
+- 纯静态托管无法替第三方 WebDAV 补 CORS，也不能调用 Workers AI。生产环境若要支持坚果云等服务和免费边缘转写，需要启用 Cloudflare Pages Functions，并确保 `/dav/*` 和 `/api/transcribe` 不被 Service Worker 或 CDN 缓存。
 
 ## 许可
 

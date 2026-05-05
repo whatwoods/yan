@@ -50,8 +50,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // WebDAV sync traffic must go straight to the dev/preview/prod proxy.
-  if (url.pathname.startsWith('/dav/')) {
+  // Dynamic edge traffic must go straight to the dev/preview/prod handlers.
+  if (url.pathname.startsWith('/dav/') || url.pathname.startsWith('/api/')) {
     return;
   }
 

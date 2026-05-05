@@ -6,7 +6,6 @@ import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
-import { getAIConfig } from './ai.js';
 
 // Photo compression: resize to max 1920px, JPEG 85%
 async function compressPhoto(file) {
@@ -28,6 +27,23 @@ async function compressPhoto(file) {
 }
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
+
+async function transcribeViaWorkersAI(blob) {
+  const form = new FormData();
+  form.append('file', blob, 'recording.webm');
+  const res = await fetch('/api/transcribe', {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(`Workers AI transcription failed: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.text) {
+    throw new Error('Workers AI transcription returned empty text');
+  }
+  return data.text.trim();
+}
 
 export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDismissSetup, onGoSettings, autoExpand, onAutoExpanded }) {
   const persona = PERSONAS.yan;
@@ -229,33 +245,10 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       if (chunks.length > 0) {
         setInterim('正在转写…');
         try {
-          const config = await getAIConfig();
-          const endpoint = config.endpoint || '';
-          const apiKey = config.apiKey || '';
-          if (endpoint && apiKey) {
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            const form = new FormData();
-            form.append('file', blob, 'recording.webm');
-            form.append('model', 'whisper-1');
-            form.append('language', 'zh');
-            const baseUrl = endpoint.replace(/\/v1\/?$/, '');
-            const res = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${apiKey}` },
-              body: form,
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.text) {
-                setText((t) => (t ? t + '\n' : '') + data.text.trim());
-                showToast('转写完成');
-              }
-            } else {
-              showToast('转写失败 · 请手动输入');
-            }
-          } else {
-            showToast('请用桌面/Android 语音输入');
-          }
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          const transcript = await transcribeViaWorkersAI(blob);
+          setText((t) => (t ? t + '\n' : '') + transcript);
+          showToast('转写完成');
         } catch {
           showToast('转写失败 · 请手动输入');
         }

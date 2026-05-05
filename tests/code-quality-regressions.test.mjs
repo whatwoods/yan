@@ -7,6 +7,7 @@ const aiSettingsSource = readFileSync(new URL('../src/screen-settings-ai.jsx', i
 const syncSettingsSource = readFileSync(new URL('../src/screen-settings-sync.jsx', import.meta.url), 'utf8');
 const storeSource = readFileSync(new URL('../src/store.jsx', import.meta.url), 'utf8');
 const syncSource = readFileSync(new URL('../src/sync.js', import.meta.url), 'utf8');
+const captureSource = readFileSync(new URL('../src/screen-capture.jsx', import.meta.url), 'utf8');
 
 test('AI test persists the normalized provider endpoint used for the request', () => {
   assert.match(aiSettingsSource, /const updated = \{ \.\.\.aiConfig, endpoint, models,/);
@@ -31,4 +32,10 @@ test('note writes do not update memory after IndexedDB persistence fails', () =>
 test('background AI processing only runs when AI is configured', () => {
   assert.match(appSource, /if \(aiConfigured\) \{/);
   assert.match(appSource, /const patch = settings\.autoTag \? aiResult : \{ \.\.\.aiResult, tags: addedNote\.tags \|\| \[\] \};/);
+});
+
+test('audio fallback uses only the same-origin Workers AI transcription endpoint', () => {
+  assert.match(captureSource, /fetch\('\/api\/transcribe'/);
+  assert.doesNotMatch(captureSource, /\/v1\/audio\/transcriptions/);
+  assert.doesNotMatch(captureSource, /transcribeViaOpenAICompatible/);
 });
