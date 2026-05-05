@@ -8,7 +8,7 @@ import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 import { useHorizontalSwipe } from './gestures.js';
-import { organizeBody, isAIConfigured, getModelAssignment, generateSummary, getAIConfig } from './ai.js';
+import { organizeBody, isAIConfigured, getModelAssignment, getModelGroupAssignment, generateSummary, getAIConfig } from './ai.js';
 
 export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext, prevNote, nextNote }) {
   const T = TOKENS, I = ICONS;
@@ -53,8 +53,8 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
   }, []);
 
   useEffect(() => {
-    Promise.all([getAIConfig(), getModelAssignment()])
-      .then(([config, assignment]) => setAiConfigured(isAIConfigured(config, assignment)))
+    Promise.all([getAIConfig(), getModelAssignment(), getModelGroupAssignment()])
+      .then(([config, assignment, groupAssignment]) => setAiConfigured(isAIConfigured(config, assignment, groupAssignment)))
       .catch(() => {});
   }, []);
 
@@ -106,7 +106,8 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
     }
     const config = await getAIConfig();
     const assignment = await getModelAssignment();
-    if (!isAIConfigured(config, assignment)) {
+    const groupAssignment = await getModelGroupAssignment();
+    if (!isAIConfigured(config, assignment, groupAssignment)) {
       showToast('请先在设置里配 AI');
       return;
     }

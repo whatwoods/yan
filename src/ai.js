@@ -57,6 +57,35 @@ function safeParseJson(text) {
   return null;
 }
 
+function normalizeContentText(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === 'string') return part;
+      if (typeof part?.text === 'string') return part.text;
+      if (typeof part?.content === 'string') return part.content;
+      return '';
+    }).join('').trim();
+  }
+  if (typeof content.text === 'string') return content.text.trim();
+  if (typeof content.content === 'string') return content.content.trim();
+  return '';
+}
+
+function extractChoiceText(choice) {
+  return normalizeContentText(choice?.message?.content ?? choice?.text ?? '');
+}
+
+function extractChoiceReasoningText(choice) {
+  return normalizeContentText(
+    choice?.message?.reasoning_content
+    ?? choice?.message?.reasoningContent
+    ?? choice?.message?.reasoning
+    ?? ''
+  );
+}
+
 // ── Config helpers ────────────────────────────────────────────
 
 export async function getAIConfig() {
@@ -66,9 +95,13 @@ export async function getAIConfig() {
   return config;
 }
 
-export function isAIConfigured(config, assignment = {}) {
+export function isAIConfigured(config, assignment = {}, groupAssignment = {}) {
   if (!config?.apiKey || !config?.endpoint) return false;
-  return Boolean(config.defaultModel || Object.values(assignment || {}).some(Boolean));
+  return Boolean(
+    config.defaultModel
+    || Object.values(assignment || {}).some(Boolean)
+    || Object.values(groupAssignment || {}).some(Boolean)
+  );
 }
 
 export async function getModelAssignment() {
@@ -82,7 +115,7 @@ export async function getModelGroupAssignment() {
   return (await getMeta('modelGroupAssignment')) || { simple: '', normal: '', complex: '' };
 }
 
-export function resolveModel(task, config, assignment, groupAssignment) {
+export function resolveModel(task, config, assignment = {}, groupAssignment = {}) {
   return assignment[task]
     || groupAssignment[TASK_GROUPS[task]]
     || config.defaultModel
@@ -104,6 +137,88 @@ export async function fetchModels(endpoint, apiKey) {
   } catch (e) {
     console.warn('[ai] fetchModels 失败:', e.message);
     return [];
+  }
+}
+
+export async function testAIAvailability({
+  task = 'ask',
+  config: cachedConfig,
+  assignment: cachedAssignment,
+  groupAssignment: cachedGroupAssignment,
+  fetchImpl = fetch,
+  timeout = 20_000,
+  signal,
+} = {}) {
+  const config = cachedConfig || await getAIConfig();
+  const assignment = cachedAssignment || await getModelAssignment();
+  const groupAssignment = cachedGroupAssignment || await getModelGroupAssignment();
+  const endpoint = (config.endpoint || '').trim();
+
+  if (!endpoint || !config.apiKey) {
+    return { ok: false, reason: '请填写端点和密钥' };
+  }
+
+  const model = resolveModel(task, { ...config, endpoint }, assignment, groupAssignment);
+  if (!model) {
+    return { ok: false, reason: '未设置可用模型' };
+  }
+
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: '只回复“可用”两个字，不要解释。' },
+      { role: 'user', content: '请回复：可用' },
+    ],
+    temperature: 0,
+    max_tokens: 128,
+  };
+
+  const ctrl = new AbortController();
+  const abortFromCaller = () => ctrl.abort();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener('abort', abortFromCaller, { once: true });
+  }
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+
+  try {
+    const res = await fetchImpl(joinEndpoint(endpoint, '/chat/completions'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+
+    if (!res.ok) {
+      return { ok: false, model, reason: `HTTP ${res.status}` };
+    }
+
+    const data = await res.json().catch(() => null);
+    const choice = data?.choices?.[0];
+    const sample = extractChoiceText(choice);
+    if (!sample) {
+      if (choice?.finish_reason === 'length') {
+        return { ok: false, model, reason: '输出被截断，请重试或换用非推理模型' };
+      }
+      if (extractChoiceReasoningText(choice)) {
+        return { ok: false, model, reason: '只返回了思考内容，未返回最终回答' };
+      }
+      return { ok: false, model, reason: '未返回内容' };
+    }
+
+    return { ok: true, model, sample: sample.slice(0, 40) };
+  } catch (e) {
+    return {
+      ok: false,
+      model,
+      reason: e.name === 'AbortError' ? '请求超时' : (e.message || '网络错误'),
+    };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.('abort', abortFromCaller);
   }
 }
 
@@ -142,7 +257,7 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
     clearTimeout(timer);
     if (!res.ok) throw new Error(`chatCompletion ${res.status}`);
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || null;
+    return extractChoiceText(data.choices?.[0]) || null;
   } catch (e) {
     console.warn(`[ai] chatCompletion(${task}) 失败:`, e.message);
     // JSON mode not supported fallback: retry without response_format
@@ -163,7 +278,7 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
         clearTimeout(timer2);
         if (!res2.ok) throw new Error(`chatCompletion(retry) ${res2.status}`);
         const data2 = await res2.json();
-        return data2.choices?.[0]?.message?.content || null;
+        return extractChoiceText(data2.choices?.[0]) || null;
       } catch (e2) {
         console.warn(`[ai] chatCompletion(${task}) fallback 也失败:`, e2.message);
       }

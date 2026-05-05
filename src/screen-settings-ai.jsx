@@ -6,15 +6,37 @@ import { ICONS } from './icons.jsx';
 import { showToast } from './components.jsx';
 import { getMeta, setMeta } from './db.js';
 import { SecretsStore } from './crypto.js';
-import { PROVIDERS, TASK_LABELS, TASK_GROUPS, fetchModels as aiFetchModels, getModelAssignment, getModelGroupAssignment, isAIConfigured } from './ai.js';
+import { PROVIDERS, TASK_LABELS, TASK_GROUPS, fetchModels as aiFetchModels, getModelAssignment, getModelGroupAssignment, isAIConfigured, testAIAvailability } from './ai.js';
 import { Section, Row, PickerSheet, SubScrHead, inputStyle } from './settings-components.jsx';
 import { UnlockSheet } from './settings-security.jsx';
+
+function groupIcon(groupKey, I) {
+  if (groupKey === 'simple') return <I.tag size={14} />;
+  if (groupKey === 'normal') return <I.chat size={14} />;
+  return <I.sparkle size={14} />;
+}
+
+function taskIcon(task, I) {
+  const map = {
+    classify: <I.grid size={14} />,
+    tag: <I.tag size={14} />,
+    summarize: <I.list size={14} />,
+    ask: <I.chat size={14} />,
+    organize: <I.pen size={14} />,
+    restructure: <I.book size={14} />,
+    insight: <I.calendar size={14} />,
+    curator: <I.filter size={14} />,
+  };
+  return map[task] || <I.chip size={14} />;
+}
 
 export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfigChange }) {
   const T = TOKENS, I = ICONS;
 
   const [aiConfig, setAiConfig] = useState({ provider: 'deepseek', endpoint: '', apiKey: '', models: [], defaultModel: '' });
-  const [aiTesting, setAiTesting] = useState(false);
+  const [modelFetching, setModelFetching] = useState(false);
+  const [aiAvailabilityTesting, setAiAvailabilityTesting] = useState(false);
+  const [aiAvailabilityResult, setAiAvailabilityResult] = useState(null);
   const [aiModels, setAiModels] = useState([]);
   const [modelAssignment, setModelAssignment] = useState({ classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '', organize: '', restructure: '' });
   const [modelGroupAssignment, setModelGroupAssignment] = useState({ simple: '', normal: '', complex: '' });
@@ -43,7 +65,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
           const hydrated = { ...savedAi, apiKey: savedAi.apiKey || SecretsStore.get('apiKey') || '' };
           setAiConfig(prev => ({ ...prev, ...hydrated }));
           setAiModels(hydrated.models || []);
-          onAIConfigChange?.(hydrated, savedAssignment);
+          onAIConfigChange?.(hydrated, savedAssignment, savedGroupAssignment);
         }
         if (savedAssignment) setModelAssignment(savedAssignment);
         if (savedGroupAssignment) setModelGroupAssignment(savedGroupAssignment);
@@ -70,12 +92,13 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
     } else {
       await setMeta('aiConfig', config);
     }
-    onAIConfigChange?.(config, modelAssignment);
-  }, [masterPasswordSet, secretsUnlocked, modelAssignment, onAIConfigChange]);
+    onAIConfigChange?.(config, modelAssignment, modelGroupAssignment);
+  }, [masterPasswordSet, secretsUnlocked, modelAssignment, modelGroupAssignment, onAIConfigChange]);
 
-  const handleAiTest = useCallback(async () => {
-    setAiTesting(true);
+  const handleFetchModels = useCallback(async () => {
+    setModelFetching(true);
     setAiModels([]);
+    setAiAvailabilityResult(null);
     try {
       const endpoint = aiConfig.endpoint || PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || '';
       if (!endpoint || !aiConfig.apiKey) {
@@ -87,16 +110,43 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
         setAiModels(models);
         const updated = { ...aiConfig, endpoint, models, defaultModel: aiConfig.defaultModel || models[0] };
         await saveAiConfig(updated);
-        showToast(`连接成功 · ${models.length} 个模型`);
+        showToast(`已获取 ${models.length} 个模型`);
       } else {
-        showToast('连接失败: 未获取到模型列表');
+        showToast('获取失败: 未获取到模型列表');
       }
     } catch (e) {
-      showToast('连接失败: ' + (e.message || '网络错误'));
+      showToast('获取失败: ' + (e.message || '网络错误'));
     } finally {
-      setAiTesting(false);
+      setModelFetching(false);
     }
   }, [aiConfig, saveAiConfig]);
+
+  const handleAiAvailabilityTest = useCallback(async () => {
+    setAiAvailabilityTesting(true);
+    const endpoint = aiConfig.endpoint || PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || '';
+    const config = { ...aiConfig, endpoint };
+    try {
+      const result = await testAIAvailability({
+        task: 'ask',
+        config,
+        assignment: modelAssignment,
+        groupAssignment: modelGroupAssignment,
+      });
+      setAiAvailabilityResult(result);
+      if (result.ok) {
+        await saveAiConfig(config);
+        showToast(`连接成功 · ${result.model}`);
+      } else {
+        showToast(`连接失败: ${result.reason}`);
+      }
+    } catch (e) {
+      const result = { ok: false, reason: e.message || '网络错误' };
+      setAiAvailabilityResult(result);
+      showToast(`连接失败: ${result.reason}`);
+    } finally {
+      setAiAvailabilityTesting(false);
+    }
+  }, [aiConfig, modelAssignment, modelGroupAssignment, saveAiConfig]);
 
   const handleUnlock = useCallback(async (password) => {
     const ok = await SecretsStore.unlock(password);
@@ -107,13 +157,13 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
     if (key) {
       setAiConfig(prev => {
         const next = { ...prev, apiKey: key };
-        onAIConfigChange?.(next, modelAssignment);
+        onAIConfigChange?.(next, modelAssignment, modelGroupAssignment);
         return next;
       });
     }
     showToast('已解锁');
     return true;
-  }, [modelAssignment, onAIConfigChange]);
+  }, [modelAssignment, modelGroupAssignment, onAIConfigChange]);
 
   return (
     <div className="screen paper">
@@ -122,7 +172,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
       <div className="scroll" style={{ flex: 1, padding: '0 20px 30px' }}>
         {secretsLocked ? (
           <Section title="密钥已加密">
-            <Row icon={<I.pin size={14} />} label="点击解锁"
+            <Row icon={<I.lock size={14} />} label="点击解锁"
               value="解锁后可配置 AI" onClick={() => setShowUnlockSheet(true)} last />
           </Section>
         ) : (
@@ -134,7 +184,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
               <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
                 <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>端点</div>
                 <input type="text" value={aiConfig.endpoint}
-                  onChange={(e) => setAiConfig({ ...aiConfig, endpoint: e.target.value })}
+                  onChange={(e) => { setAiAvailabilityResult(null); setAiConfig({ ...aiConfig, endpoint: e.target.value }); }}
                   onBlur={() => saveAiConfig(aiConfig)}
                   placeholder={PROVIDERS.find(p => p.id === aiConfig.provider)?.endpoint || 'https://...'}
                   style={inputStyle(T)} />
@@ -142,24 +192,44 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
               <div style={{ padding: '8px 14px', borderBottom: `1px solid var(--fold)` }}>
                 <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 4, fontFamily: T.fontSerif }}>API Key</div>
                 <input type="password" value={aiConfig.apiKey}
-                  onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
+                  onChange={(e) => { setAiAvailabilityResult(null); setAiConfig({ ...aiConfig, apiKey: e.target.value }); }}
                   onBlur={() => saveAiConfig(aiConfig)}
                   placeholder="sk-..."
                   style={inputStyle(T)} />
               </div>
-              <Row icon={<I.bolt size={14} />}
-                label={aiTesting ? '测试中...' : '测试连接'}
-                value={aiTesting ? '...' : '测试'}
-                onClick={aiTesting ? undefined : handleAiTest} />
+              <Row icon={<I.list size={14} />}
+                label={modelFetching ? '获取中...' : '获取模型'}
+                value={modelFetching ? '...' : '获取'}
+                onClick={modelFetching ? undefined : handleFetchModels} />
               {aiModels.length > 0 && (
-                <Row icon={<I.bolt size={14} />} label="默认模型"
-                  value={aiConfig.defaultModel || '未设置'}
-                  onClick={() => setShowDefaultModelPicker(true)} last />
+                <>
+                  <Row icon={<I.check size={14} />}
+                    label={aiAvailabilityTesting ? '测试中...' : '测试连接'}
+                    value={aiAvailabilityTesting ? '...' : aiAvailabilityResult ? (aiAvailabilityResult.ok ? '通过' : '失败') : '测试'}
+                    onClick={aiAvailabilityTesting ? undefined : handleAiAvailabilityTest} />
+                  {aiAvailabilityResult && (
+                    <div style={{
+                      padding: '8px 14px',
+                      borderBottom: `1px solid var(--fold)`,
+                      fontFamily: T.fontSerif,
+                      fontSize: 12,
+                      color: aiAvailabilityResult.ok ? 'var(--bamboo)' : 'var(--seal)',
+                      lineHeight: 1.5,
+                    }}>
+                      {aiAvailabilityResult.ok
+                        ? `已验证 ${aiAvailabilityResult.model} 能完成一次生成`
+                        : `失败：${aiAvailabilityResult.reason}`}
+                    </div>
+                  )}
+                  <Row icon={<I.chip size={14} />} label="默认模型"
+                    value={aiConfig.defaultModel || '未设置'}
+                    onClick={() => setShowDefaultModelPicker(true)} last />
+                </>
               )}
             </Section>
 
             <Section title="行为">
-              <Row icon={<I.sparkle size={14} />} label="自动识别打标签"
+              <Row icon={<I.tag size={14} />} label="自动识别打标签"
                 value={settings.autoTag ? '开' : '关'}
                 onClick={() => onSettingsChange({ ...settings, autoTag: !settings.autoTag })} last />
             </Section>
@@ -183,7 +253,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
                     <Section key={groupKey} title={groupLabels[groupKey]}>
                       {/* Group-level model */}
                       <Row
-                        icon={<I.sparkle size={14} />}
+                        icon={groupIcon(groupKey, I)}
                         label={`${groupLabels[groupKey]}模型`}
                         value={modelGroupAssignment[groupKey] || aiConfig.defaultModel || '未设置'}
                         onClick={() => setShowModelPicker(`group:${groupKey}`)}
@@ -209,7 +279,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
                       {/* Task-level overrides (when expanded) */}
                       {isExpanded && tasksInGroup.map((task, idx) => (
                         <Row key={task}
-                          icon={<span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{(TASK_LABELS[task] || task)[0]}</span>}
+                          icon={taskIcon(task, I)}
                           label={TASK_LABELS[task] || task}
                           value={modelAssignment[task] || '（继承组级）'}
                           onClick={() => setShowModelPicker(task)}
@@ -227,7 +297,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
 
         <div style={{ textAlign: 'center', padding: '20px 0 10px',
           fontFamily: T.fontMono, fontSize: 11, color: 'var(--ink-fade)' }}>
-          {isAIConfigured(aiConfig, modelAssignment)
+          {isAIConfigured(aiConfig, modelAssignment, modelGroupAssignment)
             ? `已配置 · ${PROVIDERS.find(p => p.id === aiConfig.provider)?.name || aiConfig.provider}`
             : '本地（离线）'}
         </div>
@@ -243,6 +313,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
           current={aiConfig.provider}
           onSelect={(id) => {
             const p = PROVIDERS.find(x => x.id === id);
+            setAiAvailabilityResult(null);
             saveAiConfig({ ...aiConfig, provider: id, endpoint: p?.endpoint || aiConfig.endpoint });
             setShowProviderPicker(false);
           }}
@@ -252,7 +323,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
         <PickerSheet title="默认模型"
           options={aiModels.map(m => ({ value: m, label: m, hint: '用于未单独指定的任务' }))}
           current={aiConfig.defaultModel}
-          onSelect={(val) => { saveAiConfig({ ...aiConfig, defaultModel: val }); setShowDefaultModelPicker(false); }}
+          onSelect={(val) => { setAiAvailabilityResult(null); saveAiConfig({ ...aiConfig, defaultModel: val }); setShowDefaultModelPicker(false); }}
           onClose={() => setShowDefaultModelPicker(false)} />
       )}
       {showModelPicker && (
@@ -278,10 +349,14 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
               const updated = { ...modelGroupAssignment, [groupKey]: val };
               setModelGroupAssignment(updated);
               setMeta('modelGroupAssignment', updated);
+              setAiAvailabilityResult(null);
+              onAIConfigChange?.(aiConfig, modelAssignment, updated);
             } else {
               const updated = { ...modelAssignment, [showModelPicker]: val };
               setModelAssignment(updated);
               setMeta('modelAssignment', updated);
+              setAiAvailabilityResult(null);
+              onAIConfigChange?.(aiConfig, updated, modelGroupAssignment);
             }
             setShowModelPicker(null);
           }}

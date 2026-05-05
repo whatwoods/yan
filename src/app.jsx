@@ -5,7 +5,7 @@ import { TOKENS, PERSONAS } from './tokens.jsx';
 import { Store, autoTitle, autoTags, autoSummary, extractPeople, processNoteWithAI } from './store.jsx';
 import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
-import { getAIConfig, getModelAssignment, isAIConfigured } from './ai.js';
+import { getAIConfig, getModelAssignment, getModelGroupAssignment, isAIConfigured } from './ai.js';
 
 const ListScreen = React.lazy(() => import('./screen-list.jsx').then(m => ({ default: m.ListScreen })));
 const DetailScreen = React.lazy(() => import('./screen-detail.jsx').then(m => ({ default: m.DetailScreen })));
@@ -89,9 +89,13 @@ export function App() {
       try {
         await Store.init();
         if (cancelled) return;
-        const [aiConfig, assignment] = await Promise.all([getAIConfig(), getModelAssignment()]);
+        const [aiConfig, assignment, groupAssignment] = await Promise.all([
+          getAIConfig(),
+          getModelAssignment(),
+          getModelGroupAssignment(),
+        ]);
         if (cancelled) return;
-        const ready = isAIConfigured(aiConfig, assignment);
+        const ready = isAIConfigured(aiConfig, assignment, groupAssignment);
         setSettings(Store.loadSettings());
         setAiConfigured(ready);
         if (ready) {
@@ -234,8 +238,8 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const handleAIConfigChange = useCallback((config, assignment) => {
-    const ready = isAIConfigured(config, assignment);
+  const handleAIConfigChange = useCallback((config, assignment, groupAssignment) => {
+    const ready = isAIConfigured(config, assignment, groupAssignment);
     setAiConfigured(ready);
     if (ready) {
       Store.markRun();

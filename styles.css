@@ -346,6 +346,10 @@ html, body {
 }
 
 /* Toast */
+@keyframes toast-in {
+  from { transform: translateX(-50%) translateY(20%); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
 .toast {
   position: fixed; left: 50%; top: 65%;
   transform: translateX(-50%);
@@ -354,7 +358,7 @@ html, body {
   font-family: var(--font-serif); font-size: 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.2);
   display: flex; align-items: center; gap: 8px;
-  animation: slide-up .25s ease, fade-in .25s ease;
+  animation: toast-in .25s ease;
   z-index: 100;
   white-space: nowrap;
 }
@@ -765,7 +769,13 @@ mark {
     overflow: hidden;
     position: relative; z-index: 1;
   }
-  .app { position: absolute; }
+  .app {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: none;
+  }
 }
 
 /* Reduce motion */

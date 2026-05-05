@@ -12,8 +12,34 @@ const audioTranscriptionSource = readFileSync(new URL('../src/audio-transcriptio
 const syncServiceSource = readFileSync(new URL('../src/sync-service.js', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
-test('AI test persists the normalized provider endpoint used for the request', () => {
+test('AI model fetch persists the normalized provider endpoint used for the request', () => {
   assert.match(aiSettingsSource, /const updated = \{ \.\.\.aiConfig, endpoint, models,/);
+  assert.match(aiSettingsSource, /handleFetchModels/);
+  assert.match(aiSettingsSource, /获取模型/);
+});
+
+test('AI settings exposes a real connection test separate from model fetching', () => {
+  assert.match(aiSettingsSource, /testAIAvailability/);
+  assert.match(aiSettingsSource, /handleAiAvailabilityTest/);
+  assert.match(aiSettingsSource, /测试连接/);
+  assert.doesNotMatch(aiSettingsSource, /测试可用性/);
+  assert.match(aiSettingsSource, /task: 'ask'/);
+});
+
+test('AI settings hides the connection test until models are fetched', () => {
+  assert.match(aiSettingsSource, /\{aiModels\.length > 0 && \(\s*<>\s*<Row icon=\{<I\.check size=\{14\} \/>\}\s+label=\{aiAvailabilityTesting \? '测试中\.\.\.' : '测试连接'\}/);
+  assert.match(aiSettingsSource, /setAiModels\(\[\]\);\s+setAiAvailabilityResult\(null\);/);
+});
+
+test('AI settings icons distinguish provider, models, connection, and task semantics', () => {
+  assert.match(aiSettingsSource, /icon=\{<I\.globe size=\{14\} \/>\} label="供应商"/);
+  assert.match(aiSettingsSource, /icon=\{<I\.list size=\{14\} \/>\}\s+label=\{modelFetching \? '获取中\.\.\.' : '获取模型'\}/);
+  assert.match(aiSettingsSource, /icon=\{<I\.check size=\{14\} \/>\}\s+label=\{aiAvailabilityTesting \? '测试中\.\.\.' : '测试连接'\}/);
+  assert.match(aiSettingsSource, /icon=\{<I\.chip size=\{14\} \/>\} label="默认模型"/);
+  assert.match(aiSettingsSource, /icon=\{<I\.tag size=\{14\} \/>\} label="自动识别打标签"/);
+  assert.match(aiSettingsSource, /function taskIcon/);
+  assert.match(aiSettingsSource, /icon=\{taskIcon\(task, I\)\}\s+label=\{TASK_LABELS\[task\] \|\| task\}/);
+  assert.doesNotMatch(aiSettingsSource, /icon=\{<span[\s\S]*TASK_LABELS\[task\]/);
 });
 
 test('WebDAV settings hydrate encrypted password when secrets are unlocked', () => {
@@ -81,4 +107,17 @@ test('home capture editor follows the mobile visual viewport when the keyboard o
   assert.match(captureSource, /window\.visualViewport\?\.height/);
   assert.doesNotMatch(captureSource, /window\.innerHeight \* 0\.42/);
   assert.match(captureSource, /minHeight:\s*0/);
+});
+
+test('desktop shell sizes the app to the framed root instead of the browser viewport', () => {
+  const desktopRule = cssSource.match(/@media \(min-width:\s*720px\)\s*\{(?<body>[\s\S]+?)\n\}/);
+  assert.ok(desktopRule, 'styles.css should define the desktop framing media query');
+
+  assert.match(desktopRule.groups.body, /#root\s*\{[\s\S]*?width\s*:\s*420px/);
+
+  const desktopAppRule = desktopRule.groups.body.match(/\.app\s*\{(?<body>[^}]+)\}/);
+  assert.ok(desktopAppRule, 'desktop framing should override .app sizing');
+  assert.match(desktopAppRule.groups.body, /width\s*:\s*100%/);
+  assert.match(desktopAppRule.groups.body, /height\s*:\s*100%/);
+  assert.match(desktopAppRule.groups.body, /transform\s*:\s*none/);
 });

@@ -7,7 +7,7 @@ import { ScrHead, showToast } from './components.jsx';
 import { Store } from './store.jsx';
 import { SecretsStore } from './crypto.js';
 import { getMeta, setMeta } from './db.js';
-import { PROVIDERS, getModelAssignment, isAIConfigured } from './ai.js';
+import { PROVIDERS, getModelAssignment, getModelGroupAssignment, isAIConfigured } from './ai.js';
 import { Section, Row } from './settings-components.jsx';
 import { MasterPasswordSheet, UnlockSheet } from './settings-security.jsx';
 
@@ -29,12 +29,13 @@ export function SettingsScreen({ settings, onChange, onResetSeed, onExport, onCl
   useEffect(() => {
     (async () => {
       try {
-        const [savedAi, savedWebdav, savedLastSync, hasPw, savedAssignment] = await Promise.all([
+        const [savedAi, savedWebdav, savedLastSync, hasPw, savedAssignment, savedGroupAssignment] = await Promise.all([
           getMeta('aiConfig'),
           getMeta('webdavConfig'),
           getMeta('lastSync'),
           SecretsStore.isSetup(),
           getModelAssignment(),
+          getModelGroupAssignment(),
         ]);
         if (hasPw) {
           setMasterPasswordSet(true);
@@ -42,7 +43,7 @@ export function SettingsScreen({ settings, onChange, onResetSeed, onExport, onCl
         }
         if (savedAi) {
           setAiSummary({
-            configured: isAIConfigured(savedAi, savedAssignment),
+            configured: isAIConfigured(savedAi, savedAssignment, savedGroupAssignment),
             provider: PROVIDERS.find(p => p.id === savedAi.provider)?.name || savedAi.provider || '',
             modelCount: savedAi.models?.length || 0,
           });
@@ -111,12 +112,15 @@ export function SettingsScreen({ settings, onChange, onResetSeed, onExport, onCl
     const key = SecretsStore.get('apiKey');
     if (key) {
       const savedAi = await getMeta('aiConfig');
-      const savedAssignment = await getModelAssignment();
+      const [savedAssignment, savedGroupAssignment] = await Promise.all([
+        getModelAssignment(),
+        getModelGroupAssignment(),
+      ]);
       if (savedAi) {
         const hydrated = { ...savedAi, apiKey: key };
-        onAIConfigChange?.(hydrated, savedAssignment);
+        onAIConfigChange?.(hydrated, savedAssignment, savedGroupAssignment);
         setAiSummary({
-          configured: isAIConfigured(hydrated, savedAssignment),
+          configured: isAIConfigured(hydrated, savedAssignment, savedGroupAssignment),
           provider: PROVIDERS.find(p => p.id === hydrated.provider)?.name || hydrated.provider || '',
           modelCount: hydrated.models?.length || 0,
         });
