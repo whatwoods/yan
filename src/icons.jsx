@@ -25,6 +25,7 @@ export const ICONS = {
   pin:     (p) => <Icon {...p}><circle cx="12" cy="6" r="3.5"/><path d="M12 9.5v12M9 21.5h6"/></Icon>,
   lock:    (p) => <Icon {...p}><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/></Icon>,
   check:   (p) => <Icon {...p} d="M5 12l5 5L20 7" />,
+  refresh: (p) => <Icon {...p}><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18 11a6 6 0 00-10-4.5L4 10M6 13a6 6 0 0010 4.5l4-3.5"/></Icon>,
   bolt:    (p) => <Icon {...p} d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />,
   book:    (p) => <Icon {...p} d="M4 4h7a3 3 0 013 3v13a2 2 0 00-2-2H4V4zM20 4h-7a3 3 0 00-3 3v13a2 2 0 012-2h8V4z" />,
   filter:  (p) => <Icon {...p} d="M3 5h18l-7 9v6l-4-2v-4L3 5z" />,

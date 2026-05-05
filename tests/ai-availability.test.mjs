@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isAIConfigured, testAIAvailability } from '../src/ai.js';
+import {
+  chatCompletion,
+  getOrganizeMaxTokens,
+  isAIConfigured,
+  testAIAvailability,
+} from '../src/ai.js';
 
 test('testAIAvailability posts a minimal chat completion with the resolved task model', async () => {
   let request;
@@ -102,5 +107,83 @@ test('isAIConfigured treats group-level model assignment as configured', () => {
       { normal: 'normal-model' },
     ),
     true,
+  );
+});
+
+test('AI organize uses a wide uncapped completion budget for reasoning models', () => {
+  assert.equal(getOrganizeMaxTokens('短内容', 'organize'), 8192);
+  assert.equal(getOrganizeMaxTokens('短内容', 'restructure'), 12000);
+  assert.equal(getOrganizeMaxTokens('x'.repeat(20_000), 'organize'), 80_000);
+  assert.equal(getOrganizeMaxTokens('x'.repeat(20_000), 'restructure'), 100_000);
+});
+
+test('chatCompletion can surface provider error details for foreground AI actions', async () => {
+  await assert.rejects(
+    chatCompletion('organize', [{ role: 'user', content: '请整理这段笔记' }], {
+      config: {
+        endpoint: 'https://example.test/v1',
+        apiKey: 'sk-test',
+        defaultModel: '',
+      },
+      assignment: {},
+      groupAssignment: { normal: 'normal-model' },
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: { message: 'max_tokens is too large' },
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      throwOnError: true,
+    }),
+    /HTTP 400: max_tokens is too large/,
+  );
+});
+
+test('chatCompletion explains reasoning-only responses for foreground AI actions', async () => {
+  await assert.rejects(
+    chatCompletion('organize', [{ role: 'user', content: '请整理这段笔记' }], {
+      config: {
+        endpoint: 'https://example.test/v1',
+        apiKey: 'sk-test',
+        defaultModel: '',
+      },
+      assignment: {},
+      groupAssignment: { normal: 'reasoning-model' },
+      fetchImpl: async () => Response.json({
+        choices: [{
+          message: {
+            content: '',
+            reasoning_content: '我需要先分析这段笔记',
+          },
+        }],
+      }),
+      throwOnError: true,
+    }),
+    /只返回了思考内容/,
+  );
+});
+
+test('chatCompletion explains truncated reasoning responses for foreground AI actions', async () => {
+  await assert.rejects(
+    chatCompletion('organize', [{ role: 'user', content: '请整理这段笔记' }], {
+      config: {
+        endpoint: 'https://example.test/v1',
+        apiKey: 'sk-test',
+        defaultModel: '',
+      },
+      assignment: {},
+      groupAssignment: { normal: 'reasoning-model' },
+      fetchImpl: async () => Response.json({
+        choices: [{
+          finish_reason: 'length',
+          message: {
+            content: '',
+            reasoning_content: '我需要先分析这段笔记',
+          },
+        }],
+      }),
+      throwOnError: true,
+    }),
+    /输出被截断/,
   );
 });

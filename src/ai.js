@@ -86,6 +86,37 @@ function extractChoiceReasoningText(choice) {
   );
 }
 
+function describeEmptyChoice(choice) {
+  if (choice?.finish_reason === 'length') {
+    return '输出被截断，模型未返回最终正文';
+  }
+  if (extractChoiceReasoningText(choice)) {
+    return '只返回了思考内容，未返回最终正文';
+  }
+  return '模型未返回正文';
+}
+
+async function readProviderError(res) {
+  const text = await res.text().catch(() => '');
+  if (!text) return '';
+  try {
+    const data = JSON.parse(text);
+    return (
+      data?.error?.message
+      || data?.message
+      || data?.error
+      || text
+    ).toString().slice(0, 240);
+  } catch {
+    return text.slice(0, 240);
+  }
+}
+
+async function makeHttpError(res) {
+  const detail = await readProviderError(res);
+  return new Error(detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`);
+}
+
 // ── Config helpers ────────────────────────────────────────────
 
 export async function getAIConfig() {
@@ -229,35 +260,65 @@ export async function testAIAvailability({
  * @param {Array} messages — chat messages
  * @param {object} opts — { temperature, maxTokens, jsonMode, signal, timeout }
  */
-export async function chatCompletion(task, messages, { temperature = 0.3, maxTokens = 500, jsonMode = false, signal, timeout = 25_000, config: cachedConfig, assignment: cachedAssignment } = {}) {
+export async function chatCompletion(task, messages, {
+  temperature = 0.3,
+  maxTokens = 500,
+  jsonMode = false,
+  signal,
+  timeout = 25_000,
+  config: cachedConfig,
+  assignment: cachedAssignment,
+  groupAssignment: cachedGroupAssignment,
+  fetchImpl = fetch,
+  throwOnError = false,
+} = {}) {
   const config = cachedConfig || await getAIConfig();
   const assignment = cachedAssignment || await getModelAssignment();
-  if (!config.apiKey || !config.endpoint) return null;
+  if (!config.apiKey || !config.endpoint) {
+    console.warn(`[ai] chatCompletion(${task}): 缺少 apiKey 或 endpoint`);
+    if (throwOnError) throw new Error('缺少 API Key 或端点');
+    return null;
+  }
 
-  const groupAssignment = await getModelGroupAssignment();
+  const groupAssignment = cachedGroupAssignment || await getModelGroupAssignment();
   const model = resolveModel(task, config, assignment, groupAssignment);
-  if (!model) return null;
+  if (!model) {
+    console.warn(`[ai] chatCompletion(${task}): 未找到可用模型`, { assignment, groupAssignment, defaultModel: config.defaultModel });
+    if (throwOnError) throw new Error('未找到可用模型');
+    return null;
+  }
 
   const body = { model, messages, temperature, max_tokens: maxTokens };
   if (jsonMode) body.response_format = { type: 'json_object' };
 
   try {
     const ctrl = new AbortController();
-    if (signal) signal.addEventListener('abort', () => ctrl.abort());
+    const abortFromCaller = () => ctrl.abort();
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener('abort', abortFromCaller, { once: true });
+    }
     const timer = setTimeout(() => ctrl.abort(), timeout);
-    const res = await fetch(joinEndpoint(config.endpoint, '/chat/completions'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`chatCompletion ${res.status}`);
-    const data = await res.json();
-    return extractChoiceText(data.choices?.[0]) || null;
+    try {
+      const res = await fetchImpl(joinEndpoint(config.endpoint, '/chat/completions'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw await makeHttpError(res);
+      const data = await res.json();
+      const choice = data.choices?.[0];
+      const text = extractChoiceText(choice) || null;
+      if (!text && throwOnError) throw new Error(describeEmptyChoice(choice));
+      return text;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', abortFromCaller);
+    }
   } catch (e) {
     console.warn(`[ai] chatCompletion(${task}) 失败:`, e.message);
     // JSON mode not supported fallback: retry without response_format
@@ -266,23 +327,31 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
       try {
         const ctrl2 = new AbortController();
         const timer2 = setTimeout(() => ctrl2.abort(), timeout);
-        const res2 = await fetch(joinEndpoint(config.endpoint, '/chat/completions'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-          },
-          body: JSON.stringify(body),
-          signal: ctrl2.signal,
-        });
-        clearTimeout(timer2);
-        if (!res2.ok) throw new Error(`chatCompletion(retry) ${res2.status}`);
-        const data2 = await res2.json();
-        return extractChoiceText(data2.choices?.[0]) || null;
+        try {
+          const res2 = await fetchImpl(joinEndpoint(config.endpoint, '/chat/completions'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify(body),
+            signal: ctrl2.signal,
+          });
+          if (!res2.ok) throw await makeHttpError(res2);
+          const data2 = await res2.json();
+          const choice2 = data2.choices?.[0];
+          const text2 = extractChoiceText(choice2) || null;
+          if (!text2 && throwOnError) throw new Error(describeEmptyChoice(choice2));
+          return text2;
+        } finally {
+          clearTimeout(timer2);
+        }
       } catch (e2) {
         console.warn(`[ai] chatCompletion(${task}) fallback 也失败:`, e2.message);
+        if (throwOnError) throw e2;
       }
     }
+    if (throwOnError) throw e;
     return null;
   }
 }
@@ -523,29 +592,45 @@ function cleanPrefix(text) {
   return out.trim();
 }
 
+export function getOrganizeMaxTokens(body, tier = 'organize') {
+  const length = (body || '').length;
+  if (tier === 'restructure') {
+    return Math.max(12_000, length * 5);
+  }
+  return Math.max(8_192, length * 4);
+}
+
 export async function organizeBody(body, tier, { signal } = {}) {
   if (!body || body.trim().length < 30) {
     return { text: body, skipped: true };
   }
+  const config = await getAIConfig();
+  const assignment = await getModelAssignment();
+  const groupAssignment = await getModelGroupAssignment();
+  const model = resolveModel(tier, config, assignment, groupAssignment);
+  if (!model) {
+    throw new Error('NO_MODEL');
+  }
   const prompt = tier === 'restructure' ? RESTRUCTURE_PROMPT : ORGANIZE_PROMPT;
   const messages = [
     { role: 'system', content: prompt },
-    { role: 'user', content: escapeUserNote(body) },
+    { role: 'user', content: `<user_note>\n${escapeUserNote(body)}\n</user_note>` },
   ];
   const text = await chatCompletion(tier, messages, {
     temperature: tier === 'restructure' ? 0.3 : 0.2,
-    maxTokens: Math.max(800, body.length * 2),
+    maxTokens: getOrganizeMaxTokens(body, tier),
     timeout: 60_000,
     signal,
+    config,
+    assignment,
+    groupAssignment,
+    throwOnError: true,
   });
   if (!text) throw new Error('AI_EMPTY');
   const cleaned = cleanPrefix(text.trim());
   if (cleaned === body.trim()) {
     return { text: body, skipped: true, reason: 'clean' };
   }
-  const config = await getAIConfig();
-  const assignment = await getModelAssignment();
-  const groupAssignment = await getModelGroupAssignment();
   return {
     text: cleaned,
     model: resolveModel(tier, config, assignment, groupAssignment),

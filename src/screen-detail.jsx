@@ -104,21 +104,22 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
       showToast('笔记无内容');
       return;
     }
-    const config = await getAIConfig();
-    const assignment = await getModelAssignment();
-    const groupAssignment = await getModelGroupAssignment();
-    if (!isAIConfigured(config, assignment, groupAssignment)) {
-      showToast('请先在设置里配 AI');
-      return;
-    }
 
     // Abort any in-flight request before starting a new one
     organizeAbortRef.current?.abort();
-    setOrganizeSheet({ tier, status: 'loading', result: null, tab: 'organized' });
     const ctrl = new AbortController();
     organizeAbortRef.current = ctrl;
 
     try {
+      const config = await getAIConfig();
+      const assignment = await getModelAssignment();
+      const groupAssignment = await getModelGroupAssignment();
+      if (!isAIConfigured(config, assignment, groupAssignment)) {
+        showToast('请先在设置里配 AI');
+        return;
+      }
+
+      setOrganizeSheet({ tier, status: 'loading', result: null, tab: 'organized' });
       const result = await organizeBody(noteBody, tier, { signal: ctrl.signal });
       if (result.skipped) {
         setOrganizeSheet({ tier, status: 'ready', result: { text: noteBody, skipped: true, reason: result.reason }, tab: 'organized' });
@@ -130,7 +131,17 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
         setOrganizeSheet(null);
         return;
       }
-      setOrganizeSheet({ tier, status: 'error', result: null, tab: 'organized' });
+      if (e.message === 'NO_MODEL') {
+        setOrganizeSheet(null);
+        showToast('请在 AI 设置里为「AI 整理」分配模型');
+        return;
+      }
+      setOrganizeSheet({
+        tier,
+        status: 'error',
+        result: { message: e.message || '请求失败' },
+        tab: 'organized',
+      });
     }
   }, [note]);
 
@@ -665,27 +676,21 @@ function OrganizeSheet({ tier, status, result, tab, noteBody, onClose, onTabChan
               textAlign: 'center', padding: '40px 0',
               color: 'var(--seal)', fontFamily: T.fontSerif,
             }}>
-              整理失败 · 请检查网络或 AI 配置
+              整理失败 · {result?.message || '请检查网络或 AI 配置'}
             </div>
           )}
           {status === 'ready' && result?.skipped && (
-            <>
-              <div style={{
-                textAlign: 'center', padding: '10px 0',
-                color: 'var(--ink-mute)', fontFamily: T.fontSerif, fontSize: 13,
-              }}>
-                {result?.reason === 'clean' ? '砚觉得已经足够干净了' : '内容已足够简短，无需整理'}
+            <div style={{
+              textAlign: 'center', padding: '36px 0',
+              color: 'var(--ink-mute)', fontFamily: T.fontSerif,
+            }}>
+              <div style={{ fontSize: 15, color: 'var(--ink-soft)', marginBottom: 8 }}>
+                {result?.reason === 'clean' ? '无需改动' : '无需整理'}
               </div>
-              <div className="md-body"
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(marked.parse(noteBody || '')),
-                }}
-                style={{
-                  fontFamily: T.fontSerif, fontSize: 15, lineHeight: 1.8,
-                  color: 'var(--ink-soft)',
-                }}
-              />
-            </>
+              <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+                {result?.reason === 'clean' ? '砚觉得原文已经足够干净。' : '内容较短，不需要 AI 整理。'}
+              </div>
+            </div>
           )}
           {status === 'ready' && !result?.skipped && (
             <div className="md-body"
@@ -712,7 +717,20 @@ function OrganizeSheet({ tier, status, result, tab, noteBody, onClose, onTabChan
             <button className="btn-primary" onClick={onRegenerate}>重试</button>
           </div>
         )}
-        {status === 'ready' && (
+        {status === 'ready' && result?.skipped && (
+          <div style={{
+            display: 'flex', gap: 10, alignItems: 'center',
+            padding: '12px 24px', borderTop: `1px solid var(--fold)`,
+          }}>
+            <button className="icon-btn" onClick={onRegenerate} aria-label="重新生成"
+              style={{ color: 'var(--ink-mute)' }}>
+              <I.refresh size={18} />
+            </button>
+            <div style={{ flex: 1 }} />
+            <button className="btn-primary" onClick={onClose}>知道了</button>
+          </div>
+        )}
+        {status === 'ready' && !result?.skipped && (
           <div style={{
             display: 'flex', gap: 10, alignItems: 'center',
             padding: '12px 24px', borderTop: `1px solid var(--fold)`,

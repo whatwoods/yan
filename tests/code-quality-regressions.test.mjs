@@ -36,8 +36,8 @@ test('AI settings icons distinguish provider, models, connection, and task seman
   assert.match(aiSettingsSource, /icon=\{<I\.list size=\{14\} \/>\}\s+label=\{modelFetching \? '获取中\.\.\.' : '获取模型'\}/);
   assert.match(aiSettingsSource, /icon=\{<I\.check size=\{14\} \/>\}\s+label=\{aiAvailabilityTesting \? '测试中\.\.\.' : '测试连接'\}/);
   assert.match(aiSettingsSource, /icon=\{<I\.chip size=\{14\} \/>\} label="默认模型"/);
-  assert.match(aiSettingsSource, /icon=\{<I\.tag size=\{14\} \/>\} label="自动识别打标签"/);
   assert.match(aiSettingsSource, /function taskIcon/);
+  assert.match(aiSettingsSource, /tag: <I\.tag size=\{14\} \/>/);
   assert.match(aiSettingsSource, /icon=\{taskIcon\(task, I\)\}\s+label=\{TASK_LABELS\[task\] \|\| task\}/);
   assert.doesNotMatch(aiSettingsSource, /icon=\{<span[\s\S]*TASK_LABELS\[task\]/);
 });
@@ -60,7 +60,8 @@ test('note writes do not update memory after IndexedDB persistence fails', () =>
 
 test('background AI processing only runs when AI is configured', () => {
   assert.match(appSource, /if \(aiConfigured\) \{/);
-  assert.match(appSource, /const patch = settings\.autoTag \? aiResult : \{ \.\.\.aiResult, tags: addedNote\.tags \|\| \[\] \};/);
+  assert.match(appSource, /const patch = aiResult;/);
+  assert.doesNotMatch(appSource, /settings\.autoTag/);
 });
 
 test('audio fallback uses only the same-origin Workers AI transcription endpoint', () => {
