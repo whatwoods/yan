@@ -111,10 +111,10 @@ test('isAIConfigured treats group-level model assignment as configured', () => {
 });
 
 test('AI organize uses a wide uncapped completion budget for reasoning models', () => {
-  assert.equal(getOrganizeMaxTokens('短内容', 'organize'), 8192);
-  assert.equal(getOrganizeMaxTokens('短内容', 'restructure'), 12000);
-  assert.equal(getOrganizeMaxTokens('x'.repeat(20_000), 'organize'), 80_000);
-  assert.equal(getOrganizeMaxTokens('x'.repeat(20_000), 'restructure'), 100_000);
+  assert.equal(getOrganizeMaxTokens('短内容', 'organize'), 65_536);
+  assert.equal(getOrganizeMaxTokens('短内容', 'restructure'), 65_536);
+  assert.equal(getOrganizeMaxTokens('x'.repeat(20_000), 'organize'), 65_536);
+  assert.equal(getOrganizeMaxTokens('x'.repeat(20_000), 'restructure'), 65_536);
 });
 
 test('chatCompletion can surface provider error details for foreground AI actions', async () => {
@@ -184,6 +184,6 @@ test('chatCompletion explains truncated reasoning responses for foreground AI ac
       }),
       throwOnError: true,
     }),
-    /输出被截断/,
+    /思考链过长/,
   );
 });

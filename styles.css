@@ -337,6 +337,10 @@ html, body {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+@keyframes pull-breathe {
+  0%, 100% { transform: scale(1); opacity: .7; }
+  50% { transform: scale(1.6); opacity: 1; }
+}
 @keyframes dot-bounce {
   0%, 80%, 100% { transform: translateY(0); opacity: .4; }
   40% { transform: translateY(-4px); opacity: 1; }

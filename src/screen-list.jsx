@@ -268,6 +268,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
   const [actionMenu, setActionMenu] = useState(null);
   const scrollRef = useRef(null);
   const pullRef = useRef({ startY: 0, pulling: false });
+  const [pullProgress, setPullProgress] = useState(0); // 0~1, 1 = threshold reached
 
   // Close any open swipe when scrolling
   useEffect(() => {
@@ -342,6 +343,10 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
   const handleTouchMove = useCallback((e) => {
     if (!pullRef.current.pulling) return;
     pullRef.current.pullDist = e.touches[0].clientY - pullRef.current.startY;
+    const dist = Math.max(0, pullRef.current.pullDist);
+    // Slow ease: 180px to full, with diminishing returns past 60%
+    const progress = Math.min(1, dist / 180);
+    setPullProgress(progress);
   }, []);
 
   const handleTouchEnd = useCallback(() => {
@@ -349,24 +354,34 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
     const dist = pullRef.current.pullDist || 0;
     pullRef.current.pulling = false;
     pullRef.current.pullDist = 0;
-    if (dist > 80) {
+    if (dist > 140) {
+      setPullProgress(1);
       handleSync();
+    } else {
+      setPullProgress(0);
     }
   }, [handleSync]);
+
+  // Reset pull progress when sync finishes
+  useEffect(() => {
+    if (!syncing && pullProgress > 0) {
+      setPullProgress(0);
+    }
+  }, [syncing]);
 
   // Sync status pill — only visible during sync or on error
   const SyncPill = useMemo(() => {
     if (syncing) {
       return (
         <span className="status-pill status-pill--syncing" key="syncing">
-          <span style={{ fontSize: 12, animation: 'spin 1s linear infinite', display: 'inline-block' }}>&#8635;</span> 同步中
+          <I.globe size={12} style={{ animation: 'spin 1s linear infinite' }} /> 同步中
         </span>
       );
     }
     if (syncStatus === 'error') {
       return (
         <span className="status-pill status-pill--error" key="error">
-          <span style={{ fontSize: 12, fontWeight: 700 }}>!</span> 同步失败
+          <I.globe size={12} /> 同步失败
         </span>
       );
     }
@@ -476,7 +491,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
                   display: 'flex', alignItems: 'center', gap: 8,
                   cursor: 'pointer', textAlign: 'left', width: '100%',
                 }}>
-                  <span style={{ fontSize: 14, animation: syncing ? 'spin 1s linear infinite' : undefined }}>&#8635;</span> 同步
+                  <I.refresh size={14} style={syncing ? { animation: 'spin 1s linear infinite' } : undefined} /> 同步
                 </button>
                 <button onClick={() => { onCategories?.(); setShowMenu(false); }} style={{
                   background: 'transparent', border: 'none',
@@ -668,6 +683,50 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}>
+
+        {/* Pull-to-refresh indicator */}
+        {(pullProgress > 0 || syncing) && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, padding: '0 0 6px',
+            height: syncing ? 36 : pullProgress * 36,
+            opacity: syncing ? 1 : Math.min(1, pullProgress * 1.5),
+            overflow: 'hidden',
+            transition: pullRef.current.pulling ? 'none' : 'height .3s ease, opacity .3s ease',
+          }}>
+            {syncing ? (
+              <>
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: 'var(--seal)',
+                  animation: 'pull-breathe 1.2s ease-in-out infinite',
+                }} />
+                <span style={{
+                  fontSize: 12, color: 'var(--ink-mute)',
+                  fontFamily: TOKENS.fontSerif,
+                }}>同步中…</span>
+              </>
+            ) : (
+              <>
+                <span style={{
+                  width: 4 + pullProgress * 4,
+                  height: 4 + pullProgress * 4,
+                  borderRadius: '50%',
+                  background: pullProgress >= 0.78 ? 'var(--seal)' : 'var(--ink-fade)',
+                  transition: pullRef.current.pulling ? 'none' : 'width .2s ease, height .2s ease, background .2s ease',
+                  opacity: 0.4 + pullProgress * 0.6,
+                }} />
+                <span style={{
+                  fontSize: 12,
+                  color: pullProgress >= 0.78 ? 'var(--seal)' : 'var(--ink-mute)',
+                  fontFamily: TOKENS.fontSerif,
+                  transition: pullRef.current.pulling ? 'none' : 'color .2s ease',
+                }}>{pullProgress >= 0.78 ? '松手刷新' : '下拉刷新'}</span>
+              </>
+            )}
+          </div>
+        )}
+
         {filtered.length === 0 && (
           <div role="status" style={{
             background: 'var(--paper-light)', border: `1px dashed var(--fold)`,

@@ -10,7 +10,7 @@ import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 import { useHorizontalSwipe } from './gestures.js';
 import { organizeBody, isAIConfigured, getModelAssignment, getModelGroupAssignment, generateSummary, getAIConfig } from './ai.js';
 
-export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext, prevNote, nextNote }) {
+export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext, prevNote, nextNote, onOpenNote }) {
   const T = TOKENS, I = ICONS;
   const persona = PERSONAS.yan;
 
@@ -428,9 +428,10 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
               }}>相关笔记</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {related.map((n) => (
-                  <div key={n.id} style={{
+                  <div key={n.id} onClick={() => onOpenNote(n.id)} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     fontSize: 13, fontFamily: T.fontSerif, color: 'var(--ink-soft)',
+                    cursor: 'pointer',
                   }}>
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-fade)', width: 60 }}>
                       {formatRelative(n.createdAt)}
@@ -590,7 +591,7 @@ function OrganizeMenuItems({ note, onOrganize, onRestore, disabled, aiConfigured
           cursor: canOrganize ? 'pointer' : 'default',
         }}
       >
-        <I.refresh size={14} /> AI 重构
+        <I.bolt size={14} /> AI 重构
       </button>
       {hasOrganized && (
         <button onClick={onRestore} style={menuItem(T)}>

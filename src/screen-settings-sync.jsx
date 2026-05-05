@@ -191,14 +191,14 @@ export function SyncSettingsScreen({ onBack, settings }) {
             label={webdavTesting ? '测试中...' : '测试连接'}
             value={webdavTesting ? '...' : '测试'}
             onClick={webdavTesting ? undefined : handleWebdavTest} />
+          <Row icon={<I.refresh size={14} />}
+            label={webdavStatus?.syncing ? '同步中...' : '立即同步'}
+            value={webdavStatus?.syncing ? '...' : '同步'}
+            onClick={webdavStatus?.syncing ? undefined : handleSync} />
           <Row icon={<I.globe size={14} />} label="同步状态"
             value={webdavStatus?.lastSync
               ? `上次: ${new Date(webdavStatus.lastSync).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-              : '从未同步'} />
-          <Row icon={<I.send size={14} />}
-            label={webdavStatus?.syncing ? '同步中...' : '立即同步'}
-            value={webdavStatus?.syncing ? '...' : '同步'}
-            onClick={webdavStatus?.syncing ? undefined : handleSync} last />
+              : '从未同步'} last />
         </Section>
       </div>
 

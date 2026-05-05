@@ -7,6 +7,41 @@ import { ToastHost, BottomNav, showToast } from './components.jsx';
 import { CaptureScreen } from './screen-capture.jsx';
 import { getAIConfig, getModelAssignment, getModelGroupAssignment, isAIConfigured } from './ai.js';
 
+// ── Error Boundary ──────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  state = { error: null };
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) {
+    console.error('[app] uncaught render error:', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="app" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          minHeight: '100vh', fontFamily: TOKENS.fontSerif,
+          background: 'var(--paper)', color: 'var(--ink)',
+        }}>
+          <div style={{ textAlign: 'center', padding: 32 }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>砚</div>
+            <div style={{ fontSize: 14, color: 'var(--ink-mute)', marginBottom: 20 }}>遇一意外，请刷新重试</div>
+            <button
+              onClick={() => location.reload()}
+              style={{
+                border: '1px solid var(--fold)', borderRadius: 8, padding: '8px 24px',
+                background: 'var(--paper-light)', color: 'var(--ink)', fontFamily: TOKENS.fontSerif, fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              刷新
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const ListScreen = React.lazy(() => import('./screen-list.jsx').then(m => ({ default: m.ListScreen })));
 const DetailScreen = React.lazy(() => import('./screen-detail.jsx').then(m => ({ default: m.DetailScreen })));
 const YanScreen = React.lazy(() => import('./screen-yan.jsx').then(m => ({ default: m.YanScreen })));
@@ -80,6 +115,16 @@ export function App() {
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  // Global unhandled promise rejection handler
+  useEffect(() => {
+    const handler = (e) => {
+      console.error('[app] unhandledrejection:', e.reason);
+      showToast('遇一问题，请稍后重试');
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
 
   // ── Initialize Store (IndexedDB + migration) on mount ─────
@@ -270,17 +315,19 @@ export function App() {
   // ── Loading screen ───────────────────────────────────────
   if (loading) {
     return (
-      <ToastHost>
-        <div className="app" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          minHeight: '100vh', fontFamily: TOKENS.fontSerif,
-        }}>
-          <div style={{ textAlign: 'center', color: 'var(--ink-mute)' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>砚</div>
-            <div style={{ fontSize: 13 }}>正在开启笔记…</div>
+      <ErrorBoundary>
+        <ToastHost>
+          <div className="app" style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            minHeight: '100vh', fontFamily: TOKENS.fontSerif,
+          }}>
+            <div style={{ textAlign: 'center', color: 'var(--ink-mute)' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>砚</div>
+              <div style={{ fontSize: 13 }}>正在开启笔记…</div>
+            </div>
           </div>
-        </div>
-      </ToastHost>
+        </ToastHost>
+      </ErrorBoundary>
     );
   }
 
@@ -288,6 +335,7 @@ export function App() {
   const listInitialFilter = filterTag;
 
   return (
+    <ErrorBoundary>
     <ToastHost>
       <div className="app" ref={appRef}>
         {route === 'capture' && (
@@ -329,6 +377,7 @@ export function App() {
               onNext={onNext}
               prevNote={prevNote}
               nextNote={nextNote}
+              onOpenNote={openNote}
             />
           )}
           {route === 'yan' && (
@@ -406,5 +455,6 @@ export function App() {
         )}
       </div>
     </ToastHost>
+    </ErrorBoundary>
   );
 }
