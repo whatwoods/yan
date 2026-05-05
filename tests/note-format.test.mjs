@@ -27,6 +27,7 @@ ai:
   assert.equal(note.ai.summary, '第一行\n第二行\n');
   assert.deepEqual(note.tags.map((tag) => tag.label), ['产品', '客户: A']);
   assert.equal(note.body, '# 标题\n\n正文');
+  assert.equal(note.createdAt, Date.parse('2026-05-04T01:02:03.000Z'));
 });
 
 test('serialize round-trips YAML strings with apostrophes and multiline values', () => {

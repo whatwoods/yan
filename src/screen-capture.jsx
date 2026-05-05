@@ -6,7 +6,11 @@ import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
-import { createChunkedTranscriber, transcribeViaWorkersAI } from './audio-transcription.js';
+import {
+  createChunkedTranscriber,
+  shouldFallbackFromSpeechRecognitionError,
+  transcribeViaWorkersAI,
+} from './audio-transcription.js';
 
 // Photo compression: resize to max 1920px, JPEG 85%
 async function compressPhoto(file) {
@@ -50,6 +54,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
   const recRef = useRef(null);
   const textRef = useRef('');
   const chunkedTranscriberRef = useRef(null);
+  const recordingSessionRef = useRef(0);
   const photoInputRef = useRef(null);
   const filePickerRef = useRef(null);
   const focusAfterExpandRef = useRef(false);
@@ -157,6 +162,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
 
   useEffect(() => {
     return () => {
+      recordingSessionRef.current += 1;
       window.clearTimeout(collapseTimerRef.current);
       window.clearTimeout(suggestionsTimerRef.current);
       chunkedTranscriberRef.current?.stop({ cancel: true }).catch(() => {});
@@ -181,69 +187,117 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     setInterim('');
   }
 
+  function stopActiveRecognition() {
+    const recognition = recRef.current;
+    recRef.current = null;
+    if (recognition) {
+      try { recognition.stop(); } catch {}
+    }
+  }
+
+  function finishUnavailableRecording(sessionId, toastText) {
+    if (sessionId !== recordingSessionRef.current) return;
+    showToast(toastText);
+    setInterim('');
+    const hasText = Boolean(textRef.current.trim());
+    setCaptureMode(hasText ? 'text' : 'idle', { focusText: hasText });
+  }
+
+  function startRecorderFallback(sessionId) {
+    if (sessionId !== recordingSessionRef.current || chunkedTranscriberRef.current) return;
+    stopActiveRecognition();
+
+    const getUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+    if (!getUserMedia) {
+      finishUnavailableRecording(sessionId, '当前浏览器无法录音');
+      return;
+    }
+
+    showToast('正在录音 · 会持续转写');
+    setInterim('正在听你说…');
+    getUserMedia({ audio: true }).then((stream) => {
+      if (sessionId !== recordingSessionRef.current) {
+        stream.getTracks?.().forEach((track) => track.stop());
+        return;
+      }
+      const transcriber = createChunkedTranscriber({
+        stream,
+        transcribe: transcribeViaWorkersAI,
+        onTranscript: appendTranscript,
+        onStatus: (status) => {
+          if (status === 'transcribing') setInterim('正在转写上一段…');
+          if (status === 'stopped') setInterim('');
+        },
+        onError: (error) => {
+          console.warn('[capture] 分段转写失败:', error.message);
+        },
+      });
+      chunkedTranscriberRef.current = transcriber;
+      transcriber.start();
+    }).catch(() => {
+      finishUnavailableRecording(sessionId, '无法访问麦克风');
+    });
+  }
+
   function startRecording() {
+    const sessionId = recordingSessionRef.current + 1;
+    recordingSessionRef.current = sessionId;
     setCaptureMode('recording');
     setRecordingStart(Date.now());
     setInterim('');
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      const r = new SR();
-      r.lang = 'zh-CN';
-      r.interimResults = true;
-      r.continuous = true;
-      r.onresult = (e) => {
-        let final = '';
-        let interimT = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const tr = e.results[i][0].transcript;
-          if (e.results[i].isFinal) final += tr;
-          else interimT += tr;
-        }
-        if (final) {
-          setText((t) => {
-            const next = (t + final).trimStart();
-            textRef.current = next;
-            return next;
-          });
-        }
-        setInterim(interimT);
-      };
-      r.onerror = (e) => console.warn('语音识别错误:', e.error);
-      r.onend = () => {};  // onend is expected, leave empty
-      try { r.start(); } catch {}
-      recRef.current = r;
-    } else {
-      showToast('正在录音 · 会持续转写');
-      setInterim('正在听你说…');
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        const transcriber = createChunkedTranscriber({
-          stream,
-          transcribe: transcribeViaWorkersAI,
-          onTranscript: appendTranscript,
-          onStatus: (status) => {
-            if (status === 'transcribing') setInterim('正在转写上一段…');
-            if (status === 'stopped') setInterim('');
-          },
-          onError: (error) => {
-            console.warn('[capture] 分段转写失败:', error.message);
-          },
+    if (!SR) {
+      startRecorderFallback(sessionId);
+      return;
+    }
+
+    let r;
+    try {
+      r = new SR();
+    } catch {
+      startRecorderFallback(sessionId);
+      return;
+    }
+
+    r.lang = 'zh-CN';
+    r.interimResults = true;
+    r.continuous = true;
+    r.onresult = (e) => {
+      let final = '';
+      let interimT = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const tr = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += tr;
+        else interimT += tr;
+      }
+      if (final) {
+        setText((t) => {
+          const next = (t + final).trimStart();
+          textRef.current = next;
+          return next;
         });
-        chunkedTranscriberRef.current = transcriber;
-        transcriber.start();
-      }).catch(() => {
-        showToast('无法访问麦克风');
-        setInterim('');
-        setCaptureMode('idle');
-      });
+      }
+      setInterim(interimT);
+    };
+    r.onerror = (e) => {
+      console.warn('语音识别错误:', e.error);
+      if (shouldFallbackFromSpeechRecognitionError(e.error)) {
+        startRecorderFallback(sessionId);
+      }
+    };
+    r.onend = () => {};  // onend is expected, leave empty
+    recRef.current = r;
+    try {
+      r.start();
+    } catch {
+      startRecorderFallback(sessionId);
     }
   }
 
   async function stopRecording() {
-    if (recRef.current) {
-      try { recRef.current.stop(); } catch {}
-      recRef.current = null;
-    }
+    recordingSessionRef.current += 1;
+    stopActiveRecognition();
 
     if (chunkedTranscriberRef.current) {
       const transcriber = chunkedTranscriberRef.current;
@@ -262,10 +316,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
   }
 
   function cancelRecording() {
-    if (recRef.current) {
-      try { recRef.current.stop(); } catch {}
-      recRef.current = null;
-    }
+    recordingSessionRef.current += 1;
+    stopActiveRecognition();
     if (chunkedTranscriberRef.current) {
       chunkedTranscriberRef.current.stop({ cancel: true }).catch(() => {});
       chunkedTranscriberRef.current = null;

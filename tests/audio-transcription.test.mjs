@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   TRANSCRIBE_CHUNK_MS,
   createChunkedTranscriber,
+  shouldFallbackFromSpeechRecognitionError,
   transcribeViaWorkersAI,
 } from '../src/audio-transcription.js';
 
@@ -54,6 +55,14 @@ test('transcribeViaWorkersAI posts audio to the same-origin transcription endpoi
   assert.equal(request.url, '/api/transcribe');
   assert.equal(request.init.method, 'POST');
   assert.ok(request.init.body instanceof FormData);
+});
+
+test('speech recognition capability failures trigger recorder fallback', () => {
+  assert.equal(shouldFallbackFromSpeechRecognitionError('network'), true);
+  assert.equal(shouldFallbackFromSpeechRecognitionError('service-not-allowed'), true);
+  assert.equal(shouldFallbackFromSpeechRecognitionError('language-not-supported'), true);
+  assert.equal(shouldFallbackFromSpeechRecognitionError('no-speech'), false);
+  assert.equal(shouldFallbackFromSpeechRecognitionError('aborted'), false);
 });
 
 test('createChunkedTranscriber records independent chunks and transcribes them in order', async () => {

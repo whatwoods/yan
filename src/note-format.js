@@ -89,6 +89,10 @@ export function serialize(note) {
  */
 export function deserialize(md, filePath) {
   const { data, content } = parseFrontmatter(md);
+  const now = new Date().toISOString();
+  const created = data.created || now;
+  const modified = data.modified || created;
+  const createdAt = Date.parse(created);
 
   // Defensive: if tags is a string (e.g. inline array parse failure), wrap in array
   if (typeof data.tags === 'string') data.tags = [data.tags];
@@ -101,8 +105,8 @@ export function deserialize(md, filePath) {
 
   return {
     id: data.id || (filePath ? filePathToId(filePath) : ''),
-    created: data.created || new Date().toISOString(),
-    modified: data.modified || data.created || new Date().toISOString(),
+    created,
+    modified,
     kind: data.kind || 'text',
     category: data.category || '',
     tags,
@@ -115,6 +119,7 @@ export function deserialize(md, filePath) {
     attachments: data.attachments || [],
     photo: data.photo || null,
     deleted_at: data.deleted_at || null,
+    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
   };
 }
 

@@ -1,5 +1,16 @@
 export const TRANSCRIBE_CHUNK_MS = 4500;
 const DEFAULT_MIME_TYPE = 'audio/webm;codecs=opus';
+const SPEECH_RECOGNITION_FALLBACK_ERRORS = new Set([
+  'audio-capture',
+  'network',
+  'not-allowed',
+  'service-not-allowed',
+  'language-not-supported',
+]);
+
+export function shouldFallbackFromSpeechRecognitionError(error) {
+  return SPEECH_RECOGNITION_FALLBACK_ERRORS.has(error);
+}
 
 export async function transcribeViaWorkersAI(blob, { fetchImpl = fetch } = {}) {
   const form = new FormData();

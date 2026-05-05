@@ -38,6 +38,8 @@ test('background AI processing only runs when AI is configured', () => {
 
 test('audio fallback uses only the same-origin Workers AI transcription endpoint', () => {
   assert.match(captureSource, /createChunkedTranscriber/);
+  assert.match(captureSource, /shouldFallbackFromSpeechRecognitionError/);
+  assert.match(captureSource, /startRecorderFallback/);
   assert.match(audioTranscriptionSource, /fetchImpl\('\/api\/transcribe'/);
   assert.doesNotMatch(captureSource, /\/v1\/audio\/transcriptions/);
   assert.doesNotMatch(audioTranscriptionSource, /\/v1\/audio\/transcriptions/);
