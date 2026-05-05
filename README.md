@@ -10,7 +10,7 @@
 - **详情编辑**：详情页支持 Markdown 渲染、分类切换、相关笔记、全屏编辑、左右滑动翻页、软删除和回收站恢复。
 - **问砚与洞察**：砚页提供本月统计、热力图、常用标签、AI 月度洞察、问砚 RAG 问答和洞察长图导出。
 - **Tag Curator**：AI 定期分析标签统计和共现关系，给出合并、重命名、归档、新增等整理建议；标签管理页也会提示本地可判断的相似标签。
-- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，本地由 Vite 代理，Cloudflare Pages 生产环境由 Pages Function 代理；双向同步笔记、照片附件、分类、洞察、偏好和回收站，并把冲突副本写入远程 `conflicts/`。
+- **WebDAV 同步**：通过同源 `/dav/<encoded-server>/...` 代理访问 WebDAV，本地由 Vite 代理，Cloudflare Pages 生产环境由 Pages Function 代理；本地新增、编辑、删除会延迟自动同步；远端用索引和删除墓碑追踪全量笔记，并把冲突副本写入远程 `conflicts/`。
 - **数据管理**：设置页提供 Markdown 导出、分类管理、回收站、示例数据重置、全量清空、PWA 安装入口和主密码管理。
 - **隐私优先**：应用没有自带后端；笔记默认只在本机 IndexedDB，AI 请求只发往你配置的供应商，敏感 Key 可用主密码加密。
 - **离线可用**：Service Worker 缓存应用壳和构建产物，支持 PWA 安装和离线读写。
@@ -80,11 +80,19 @@ WebDAV 配置包含服务器地址、用户名、密码和远程根路径，默�
 <root>/notes/<year>/<month>/<id>.md        # 正常笔记
 <root>/trash/<id>.md                       # 回收站
 <root>/attachments/<id>/<filename>         # 照片附件
-<root>/categories.json                     # 分类
+<root>/index.json                          # 全量笔记索引
+<root>/deletions.json                      # 永久删除墓碑
+<root>/categories.json                     # 分类，带 modified 版本信息
 <root>/insights/<YYYY-MM>.md               # 月度洞察
-<root>/preferences.md                      # 偏好
+<root>/insights/<YYYY-MM>.json             # 月度洞察，带 modified 版本信息
+<root>/preferences.json                    # 偏好，带 modified 版本信息
+<root>/preferences.md                      # 偏好兼容副本
 <root>/conflicts/<local|remote>-<modified>-<id>.md  # 冲突副本
 ```
+
+笔记同步会优先读取 `<root>/index.json`，避免只扫描最近目录导致旧笔记漏拉。远端还没有索引时，会回退遍历 `<root>/notes/` 下所有年份和月份目录；同步完成后重新生成索引。永久删除会写入 `<root>/deletions.json`，下一次同步会同时删除远端正常笔记和回收站副本，避免已删除笔记从另一台设备复活。
+
+添加、编辑、软删除、恢复、永久删除、分类变更和偏好变更会在本地保存成功后标记为待同步，并在约 5 秒后自动触发一次 WebDAV 同步；短时间连续编辑会合并成一次同步。自动同步需要 WebDAV 配置完整，若主密码已启用但尚未解锁，则只保留待同步状态，等用户解锁或手动同步后再执行。
 
 Cloudflare 代理默认只允许 `https:` WebDAV 目标，并拒绝 localhost、内网 IP 等私有目标，避免把站点变成内网探测代理。可选环境变量：
 

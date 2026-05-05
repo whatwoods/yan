@@ -16,6 +16,13 @@ export { TAG_TO_CATEGORY } from './tag-colors.js';
 
 import { buildSearchIndex, addNoteToIndex, updateNoteInIndex, removeNoteFromIndex } from './search.js';
 import { TAG_TO_CATEGORY } from './tag-colors.js';
+import {
+  configureAutoSyncSource,
+  markAndScheduleSync,
+  markDataForSync,
+  recordPermanentDelete,
+  scheduleAutoSync,
+} from './sync-service.js';
 
 const STORAGE_FIRST_RUN = 'yan.firstRun.v1';
 const DEFAULT_SETTINGS = {
@@ -149,9 +156,11 @@ export const Store = {
     if (stale.length) {
       const staleIds = new Set(stale.map((n) => n.id));
       for (const n of stale) {
+        await recordPermanentDelete(n);
         await dbDeleteNote(n.id);
       }
       Store._notes = Store._notes.filter((n) => !staleIds.has(n.id));
+      scheduleAutoSync();
     }
 
     // 4. Initialize default categories if not present
@@ -227,6 +236,8 @@ export const Store = {
     Store._notes.unshift(fullNote);
     addNoteToIndex(fullNote);
     Store._touchNotes();
+    await markDataForSync('notes');
+    scheduleAutoSync();
     return fullNote;
   },
 
@@ -246,15 +257,20 @@ export const Store = {
     Store._notes[idx] = updated;
     updateNoteInIndex(updated);
     Store._touchNotes();
+    await markDataForSync('notes');
+    scheduleAutoSync();
     return updated;
   },
 
   async deleteNote(id) {
     // Hard delete
+    const note = Store._notes.find((n) => n.id === id);
+    await recordPermanentDelete(note || id);
     await dbDeleteNote(id);
     Store._notes = Store._notes.filter((n) => n.id !== id);
     removeNoteFromIndex(id);
     Store._touchNotes();
+    scheduleAutoSync();
   },
 
   /**
@@ -314,8 +330,10 @@ export const Store = {
 
   async saveSettings(s) {
     const settings = sanitizeSettings(s);
+    const previous = Store._settings;
     Store._settings = settings;
     await setMeta('settings', settings);
+    await markAndScheduleSync('preferences', { previous, next: settings });
   },
 
   // ── Categories ──────────────────────────────────────────
@@ -326,7 +344,9 @@ export const Store = {
   },
 
   async saveCategories(cats) {
+    const previous = await getMeta('categories');
     await setMeta('categories', cats);
+    await markAndScheduleSync('categories', { previous, next: cats });
   },
 
   // ── Device fingerprint ──────────────────────────────────
@@ -376,3 +396,10 @@ function guessCategoryFromTags(tags) {
   }
   return '想法';
 }
+
+configureAutoSyncSource({
+  getAllCachedNotes: () => Store.getAllCachedNotes(),
+  getCategories: () => Store.getCategories(),
+  loadSettings: () => Store.loadSettings(),
+  applySyncResult: (result) => Store.applySyncResult(result),
+});

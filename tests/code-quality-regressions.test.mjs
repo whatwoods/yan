@@ -9,6 +9,7 @@ const storeSource = readFileSync(new URL('../src/store.jsx', import.meta.url), '
 const syncSource = readFileSync(new URL('../src/sync.js', import.meta.url), 'utf8');
 const captureSource = readFileSync(new URL('../src/screen-capture.jsx', import.meta.url), 'utf8');
 const audioTranscriptionSource = readFileSync(new URL('../src/audio-transcription.js', import.meta.url), 'utf8');
+const syncServiceSource = readFileSync(new URL('../src/sync-service.js', import.meta.url), 'utf8');
 
 test('AI test persists the normalized provider endpoint used for the request', () => {
   assert.match(aiSettingsSource, /const updated = \{ \.\.\.aiConfig, endpoint, models,/);
@@ -42,4 +43,22 @@ test('audio fallback uses only the same-origin Workers AI transcription endpoint
   assert.doesNotMatch(audioTranscriptionSource, /\/v1\/audio\/transcriptions/);
   assert.doesNotMatch(captureSource, /transcribeViaOpenAICompatible/);
   assert.doesNotMatch(captureSource, /mediaRecorderRef|audioChunksRef/);
+});
+
+test('note mutations queue automatic WebDAV sync work', () => {
+  assert.match(storeSource, /scheduleAutoSync/);
+  assert.match(storeSource, /recordPermanentDelete/);
+  assert.match(storeSource, /markDataForSync\('notes'\)/);
+  assert.match(storeSource, /markAndScheduleSync\('categories'/);
+  assert.match(storeSource, /markAndScheduleSync\('preferences'/);
+  assert.match(syncServiceSource, /AUTO_SYNC_DELAY_MS = 5000/);
+});
+
+test('WebDAV sync keeps a remote index and permanent deletion tombstones', () => {
+  assert.match(syncSource, /pullRemoteIndex/);
+  assert.match(syncSource, /pullAllNotesByDirectory/);
+  assert.match(syncSource, /pushRemoteIndex/);
+  assert.match(syncSource, /pullDeletedNotes/);
+  assert.match(syncSource, /pushDeletedNotes/);
+  assert.match(syncSource, /shouldKeepRemoteNote/);
 });

@@ -4,6 +4,16 @@
 
 import { serialize, deserialize, getNotePath, getTrashPath, getAttachmentPath } from './note-format.js';
 import { putNote, getMeta, setMeta, getSyncQueue, clearSyncQueue, enqueueSync } from './db.js';
+import {
+  SYNC_DELETIONS_FILE,
+  SYNC_INDEX_FILE,
+  chooseVersionedDocument,
+  createRemoteIndex,
+  mergeDeletedNotes,
+  shouldKeepRemoteNote,
+  unwrapVersionedDocument,
+  wrapVersionedDocument,
+} from './sync-protocol.js';
 
 // ── Lightweight WebDAV client (fetch-based, no Node polyfills) ──
 
@@ -142,6 +152,22 @@ function root(sub = '') {
   return rootPath + sub;
 }
 
+async function readJsonFile(path) {
+  const data = await client.getFileContents(path, { format: 'text' });
+  return JSON.parse(data);
+}
+
+async function writeJsonFile(path, value) {
+  const dir = path.substring(0, path.lastIndexOf('/'));
+  if (dir) {
+    try { await client.createDirectory(dir, { recursive: true }); } catch {}
+  }
+  await client.putFileContents(path, JSON.stringify(value, null, 2), {
+    overwrite: true,
+    contentType: 'application/json; charset=utf-8',
+  });
+}
+
 /**
  * Initialize the WebDAV client with connection config.
  * @param {{ server: string, username: string, password: string, rootPath?: string }} config
@@ -219,6 +245,66 @@ export async function pushNote(note) {
   }
 }
 
+export async function pullRemoteIndex() {
+  if (!client) return null;
+  try {
+    return await readJsonFile(root(SYNC_INDEX_FILE));
+  } catch {
+    return null;
+  }
+}
+
+export async function pushRemoteIndex(notes) {
+  if (!client) return;
+  await writeJsonFile(root(SYNC_INDEX_FILE), createRemoteIndex(notes, rootPath));
+}
+
+export async function pullDeletedNotes() {
+  if (!client) return [];
+  try {
+    const doc = await readJsonFile(root(SYNC_DELETIONS_FILE));
+    return mergeDeletedNotes(doc);
+  } catch {
+    return [];
+  }
+}
+
+export async function pushDeletedNotes(deletedNotes) {
+  if (!client) return;
+  await writeJsonFile(root(SYNC_DELETIONS_FILE), {
+    version: 1,
+    modified: new Date().toISOString(),
+    deleted: mergeDeletedNotes(deletedNotes),
+  });
+}
+
+async function deleteRemoteNoteFiles(id) {
+  try { await client.deleteFile(getNotePath(id, rootPath)); } catch {}
+  try { await client.deleteFile(getTrashPath(id, rootPath)); } catch {}
+}
+
+async function readNoteFile(path) {
+  const md = await client.getFileContents(path, { format: 'text' });
+  const note = deserialize(md, path);
+  // Download photo attachment if frontmatter references a filename
+  if (note.photo && !note.photo.startsWith('data:') && note.photo.includes('.')) {
+    try {
+      const photoPath = getAttachmentPath(note.id, note.photo, rootPath);
+      const photoBuf = await client.getFileContents(photoPath);
+      const ext = note.photo.split('.').pop().toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      const bytes = new Uint8Array(photoBuf);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      note.photo = `data:${mime};base64,${btoa(binary)}`;
+    } catch (e) {
+      console.warn('[sync] 下载照片失败:', e.message);
+      note.photo = null;
+    }
+  }
+  return note;
+}
+
 /**
  * Pull notes from a single month directory, downloading photo attachments.
  */
@@ -229,25 +315,7 @@ async function pullMonthNotes(dirPath) {
     for (const file of (Array.isArray(contents) ? contents : [])) {
       if (file.filename.endsWith('.md')) {
         try {
-          const md = await client.getFileContents(file.filename, { format: 'text' });
-          const note = deserialize(md, file.filename);
-          // Download photo attachment if frontmatter references a filename
-          if (note.photo && !note.photo.startsWith('data:') && note.photo.includes('.')) {
-            try {
-              const photoPath = getAttachmentPath(note.id, note.photo, rootPath);
-              const photoBuf = await client.getFileContents(photoPath);
-              const ext = note.photo.split('.').pop().toLowerCase();
-              const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-              const bytes = new Uint8Array(photoBuf);
-              let binary = '';
-              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-              note.photo = `data:${mime};base64,${btoa(binary)}`;
-            } catch (e) {
-              console.warn('[sync] 下载照片失败:', e.message);
-              note.photo = null;
-            }
-          }
-          results.push(note);
+          results.push(await readNoteFile(file.filename));
         } catch (e) { console.warn('[sync] 读取笔记失败:', e.message); }
       }
     }
@@ -255,13 +323,68 @@ async function pullMonthNotes(dirPath) {
   return results;
 }
 
+async function pullIndexedNotes(remoteIndex, deletedNotes, { trash = false } = {}) {
+  const entries = Object.values(remoteIndex?.notes || {}).filter((entry) => {
+    return trash ? Boolean(entry.deleted_at) : !entry.deleted_at;
+  });
+  const pulled = [];
+  for (const entry of entries) {
+    try {
+      const note = await readNoteFile(entry.path);
+      if (shouldKeepRemoteNote(note, deletedNotes)) {
+        pulled.push(note);
+      } else {
+        await deleteRemoteNoteFiles(note.id);
+      }
+    } catch (e) {
+      console.warn('[sync] 读取索引笔记失败:', e.message);
+    }
+  }
+  return pulled;
+}
+
+async function pullAllNotesByDirectory(deletedNotes = []) {
+  const monthPaths = [];
+  try {
+    const years = await client.getDirectoryContents(root('/notes'));
+    for (const year of years.filter((item) => item.type === 'directory')) {
+      try {
+        const months = await client.getDirectoryContents(year.filename);
+        for (const month of months.filter((item) => item.type === 'directory')) {
+          monthPaths.push(month.filename.replace(/\/+$/, ''));
+        }
+      } catch {}
+    }
+  } catch {
+    return null;
+  }
+
+  const monthResults = await Promise.all(monthPaths.map(p => pullMonthNotes(p)));
+  return filterDeletedRemoteNotes(monthResults.flat(), deletedNotes);
+}
+
+async function filterDeletedRemoteNotes(notes, deletedNotes) {
+  const kept = [];
+  for (const note of notes) {
+    if (shouldKeepRemoteNote(note, deletedNotes)) kept.push(note);
+    else await deleteRemoteNoteFiles(note.id);
+  }
+  return kept;
+}
+
 /**
  * Pull notes from WebDAV for the last N months (in parallel).
  * @param {number} months — how many months back to scan
  * @returns {Promise<object[]>} array of deserialized notes
  */
-export async function pullNotes(months = 6) {
+export async function pullNotes(months = 6, remoteIndex = null, deletedNotes = []) {
   if (!client) return [];
+  if (remoteIndex?.notes) {
+    return pullIndexedNotes(remoteIndex, deletedNotes, { trash: false });
+  }
+  const fullTreeNotes = await pullAllNotesByDirectory(deletedNotes);
+  if (fullTreeNotes) return fullTreeNotes;
+
   const now = new Date();
   const monthPaths = [];
   for (let i = 0; i < months; i++) {
@@ -272,40 +395,27 @@ export async function pullNotes(months = 6) {
     monthPaths.push(root(`/notes/${year}/${month}`));
   }
   const monthResults = await Promise.all(monthPaths.map(p => pullMonthNotes(p)));
-  return monthResults.flat();
+  return filterDeletedRemoteNotes(monthResults.flat(), deletedNotes);
 }
 
 /**
  * Pull soft-deleted notes from WebDAV trash directory.
  * @returns {Promise<object[]>} array of deserialized notes from /yan/trash/
  */
-export async function pullTrashNotes() {
+export async function pullTrashNotes(remoteIndex = null, deletedNotes = []) {
   if (!client) return [];
+  if (remoteIndex?.notes) {
+    return pullIndexedNotes(remoteIndex, deletedNotes, { trash: true });
+  }
   const pulled = [];
   try {
     const contents = await client.getDirectoryContents(root('/trash'));
     for (const file of (Array.isArray(contents) ? contents : [])) {
       if (file.filename.endsWith('.md')) {
         try {
-          const md = await client.getFileContents(file.filename, { format: 'text' });
-          const note = deserialize(md, file.filename);
-          // Download photo attachment if frontmatter references a filename
-          if (note.photo && !note.photo.startsWith('data:') && note.photo.includes('.')) {
-            try {
-              const photoPath = getAttachmentPath(note.id, note.photo, rootPath);
-              const photoBuf = await client.getFileContents(photoPath);
-              const ext = note.photo.split('.').pop().toLowerCase();
-              const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-              const bytes = new Uint8Array(photoBuf);
-              let binary = '';
-              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-              note.photo = `data:${mime};base64,${btoa(binary)}`;
-            } catch (e) {
-              console.warn('[sync] 下载照片失败:', e.message);
-              note.photo = null;
-            }
-          }
-          pulled.push(note);
+          const note = await readNoteFile(file.filename);
+          if (shouldKeepRemoteNote(note, deletedNotes)) pulled.push(note);
+          else await deleteRemoteNoteFiles(note.id);
         } catch (e) { console.warn('[sync] 读取回收站笔记失败:', e.message); }
       }
     }
@@ -321,7 +431,8 @@ export async function pullTrashNotes() {
 export async function pushCategories(categories) {
   if (!client) return;
   try { await client.createDirectory(rootPath, { recursive: true }); } catch {}
-  await client.putFileContents(root('/categories.json'), JSON.stringify(categories, null, 2), { overwrite: true });
+  const modified = (await getMeta('categoriesModified')) || new Date(0).toISOString();
+  await writeJsonFile(root('/categories.json'), wrapVersionedDocument(categories, modified));
 }
 
 /**
@@ -331,10 +442,19 @@ export async function pushCategories(categories) {
 export async function pullCategories() {
   if (!client) return null;
   try {
-    const data = await client.getFileContents(root('/categories.json'), { format: 'text' });
-    return JSON.parse(data);
+    const data = await readJsonFile(root('/categories.json'));
+    return unwrapVersionedDocument(data).data;
   } catch (e) {
     console.warn('[sync] 读取分类失败:', e.message);
+    return null;
+  }
+}
+
+async function pullCategoriesDocument() {
+  if (!client) return null;
+  try {
+    return unwrapVersionedDocument(await readJsonFile(root('/categories.json')));
+  } catch {
     return null;
   }
 }
@@ -345,6 +465,8 @@ export async function pullCategories() {
 export async function pushInsight(yearMonth, text) {
   if (!client) return;
   try { await client.createDirectory(root('/insights'), { recursive: true }); } catch {}
+  const modified = (await getMeta(`insightModified:${yearMonth}`)) || new Date().toISOString();
+  await writeJsonFile(root(`/insights/${yearMonth}.json`), wrapVersionedDocument(text, modified));
   await client.putFileContents(root(`/insights/${yearMonth}.md`), text, { overwrite: true });
 }
 
@@ -365,6 +487,13 @@ export async function pullInsights() {
           result.set(name, text);
         } catch (e) { console.warn('[sync] 读取洞察失败:', e.message); }
       }
+      if (file.filename.endsWith('.json')) {
+        try {
+          const doc = unwrapVersionedDocument(JSON.parse(await client.getFileContents(file.filename, { format: 'text' })));
+          const name = file.basename.replace(/\.json$/, '');
+          result.set(name, doc.data);
+        } catch (e) { console.warn('[sync] 读取洞察失败:', e.message); }
+      }
     }
   } catch {} // dir doesn't exist
   return result;
@@ -376,6 +505,8 @@ export async function pullInsights() {
 export async function pushPreferences(prefs) {
   if (!client) return;
   try { await client.createDirectory(rootPath, { recursive: true }); } catch {}
+  const modified = (await getMeta('preferencesModified')) || new Date(0).toISOString();
+  await writeJsonFile(root('/preferences.json'), wrapVersionedDocument(prefs, modified));
   await client.putFileContents(root('/preferences.md'), JSON.stringify(prefs, null, 2), { overwrite: true });
 }
 
@@ -386,11 +517,29 @@ export async function pushPreferences(prefs) {
 export async function pullPreferences() {
   if (!client) return null;
   try {
-    const data = await client.getFileContents(root('/preferences.md'), { format: 'text' });
-    return JSON.parse(data);
+    const data = await readJsonFile(root('/preferences.json'));
+    return unwrapVersionedDocument(data).data;
   } catch (e) {
-    console.warn('[sync] 读取偏好失败:', e.message);
-    return null;
+    try {
+      const data = await client.getFileContents(root('/preferences.md'), { format: 'text' });
+      return JSON.parse(data);
+    } catch (fallbackError) {
+      console.warn('[sync] 读取偏好失败:', fallbackError.message || e.message);
+      return null;
+    }
+  }
+}
+
+async function pullPreferencesDocument() {
+  if (!client) return null;
+  try {
+    return unwrapVersionedDocument(await readJsonFile(root('/preferences.json')));
+  } catch {
+    try {
+      return unwrapVersionedDocument(JSON.parse(await client.getFileContents(root('/preferences.md'), { format: 'text' })));
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -421,8 +570,12 @@ export async function syncAll(localNotes, extra = {}) {
 
   try {
     // ── Notes sync ───────────────────────────────────────────
-    const remoteNotes = await pullNotes();
-    const trashNotes = await pullTrashNotes();
+    const remoteIndex = await pullRemoteIndex();
+    const localDeletedNotes = mergeDeletedNotes(await getMeta('deletedNotes'));
+    const remoteDeletedNotes = await pullDeletedNotes();
+    const deletedNotes = mergeDeletedNotes(localDeletedNotes, remoteDeletedNotes);
+    const remoteNotes = await pullNotes(6, remoteIndex, deletedNotes);
+    const trashNotes = await pullTrashNotes(remoteIndex, deletedNotes);
     // Notes take precedence over trash — build map with trash first,
     // then overwrite with active notes
     const remoteMap = new Map();
@@ -432,6 +585,11 @@ export async function syncAll(localNotes, extra = {}) {
     const upserted = [];
 
     for (const local of localNotes) {
+      if (!shouldKeepRemoteNote(local, deletedNotes)) {
+        await deleteRemoteNoteFiles(local.id);
+        remoteMap.delete(local.id);
+        continue;
+      }
       const remote = remoteMap.get(local.id);
       if (!remote) {
         await pushNote(local);
@@ -458,8 +616,12 @@ export async function syncAll(localNotes, extra = {}) {
 
     // New remote notes not in local
     for (const [, remote] of remoteMap) {
-      await putNote(remote);
-      upserted.push(remote);
+      if (shouldKeepRemoteNote(remote, deletedNotes)) {
+        await putNote(remote);
+        upserted.push(remote);
+      } else {
+        await deleteRemoteNoteFiles(remote.id);
+      }
     }
 
     // Drain sync queue
@@ -469,6 +631,8 @@ export async function syncAll(localNotes, extra = {}) {
       try {
         if (item.action === 'upsert' && item.data) {
           await pushNote(item.data);
+        } else if (item.action === 'delete' && item.note_id) {
+          await deleteRemoteNoteFiles(item.note_id);
         }
       } catch (e) {
         console.warn('[sync] 队列推送失败:', e.message);
@@ -481,13 +645,26 @@ export async function syncAll(localNotes, extra = {}) {
     }
 
     // ── Non-note data sync ───────────────────────────────────
-    // Categories: push local if provided, otherwise pull remote
+    // Categories: versioned last-writer-wins document
     if (extra.categories) {
-      await pushCategories(extra.categories);
-    }
-    const remoteCats = await pullCategories();
-    if (remoteCats && !extra.categories) {
-      await setMeta('categories', remoteCats);
+      const localCats = wrapVersionedDocument(
+        extra.categories,
+        (await getMeta('categoriesModified')) || new Date(0).toISOString(),
+      );
+      const remoteCats = await pullCategoriesDocument();
+      const chosenCats = chooseVersionedDocument(localCats, remoteCats);
+      if (chosenCats === localCats) {
+        await pushCategories(extra.categories);
+      } else if (chosenCats) {
+        await setMeta('categories', chosenCats.data);
+        await setMeta('categoriesModified', chosenCats.modified);
+      }
+    } else {
+      const remoteCats = await pullCategoriesDocument();
+      if (remoteCats) {
+        await setMeta('categories', remoteCats.data);
+        await setMeta('categoriesModified', remoteCats.modified);
+      }
     }
 
     // Insights: push local, pull remote
@@ -497,10 +674,31 @@ export async function syncAll(localNotes, extra = {}) {
       }
     }
 
-    // Preferences: push local
+    // Preferences: versioned last-writer-wins document
     if (extra.preferences) {
-      await pushPreferences(extra.preferences);
+      const localPrefs = wrapVersionedDocument(
+        extra.preferences,
+        (await getMeta('preferencesModified')) || new Date(0).toISOString(),
+      );
+      const remotePrefs = await pullPreferencesDocument();
+      const chosenPrefs = chooseVersionedDocument(localPrefs, remotePrefs);
+      if (chosenPrefs === localPrefs) {
+        await pushPreferences(extra.preferences);
+      } else if (chosenPrefs) {
+        await setMeta('settings', chosenPrefs.data);
+        await setMeta('preferencesModified', chosenPrefs.modified);
+      }
     }
+
+    await pushDeletedNotes(deletedNotes);
+    await setMeta('deletedNotes', deletedNotes);
+
+    const finalNotes = new Map();
+    for (const note of [...localNotes, ...upserted]) {
+      if (shouldKeepRemoteNote(note, deletedNotes)) finalNotes.set(note.id, note);
+    }
+    for (const conflict of conflicts) finalNotes.delete(conflict.local.id);
+    await pushRemoteIndex([...finalNotes.values()]);
 
     // Record sync timestamps
     await setMeta('lastSync', new Date().toISOString());
