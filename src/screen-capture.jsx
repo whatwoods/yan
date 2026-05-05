@@ -6,6 +6,7 @@ import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
+import { createChunkedTranscriber, transcribeViaWorkersAI } from './audio-transcription.js';
 
 // Photo compression: resize to max 1920px, JPEG 85%
 async function compressPhoto(file) {
@@ -28,23 +29,6 @@ async function compressPhoto(file) {
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
 
-async function transcribeViaWorkersAI(blob) {
-  const form = new FormData();
-  form.append('file', blob, 'recording.webm');
-  const res = await fetch('/api/transcribe', {
-    method: 'POST',
-    body: form,
-  });
-  if (!res.ok) {
-    throw new Error(`Workers AI transcription failed: ${res.status}`);
-  }
-  const data = await res.json();
-  if (!data.text) {
-    throw new Error('Workers AI transcription returned empty text');
-  }
-  return data.text.trim();
-}
-
 export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDismissSetup, onGoSettings, autoExpand, onAutoExpanded }) {
   const persona = PERSONAS.yan;
   const T = TOKENS, I = ICONS;
@@ -64,11 +48,17 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
   const taRef = useRef(null);
   const omniboxRef = useRef(null);
   const recRef = useRef(null);
+  const textRef = useRef('');
+  const chunkedTranscriberRef = useRef(null);
   const photoInputRef = useRef(null);
   const filePickerRef = useRef(null);
   const focusAfterExpandRef = useRef(false);
   const collapseTimerRef = useRef(null);
   const suggestionsTimerRef = useRef(null);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
@@ -169,6 +159,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     return () => {
       window.clearTimeout(collapseTimerRef.current);
       window.clearTimeout(suggestionsTimerRef.current);
+      chunkedTranscriberRef.current?.stop({ cancel: true }).catch(() => {});
     };
   }, []);
 
@@ -179,9 +170,16 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     return () => clearInterval(id);
   }, [mode]);
 
-  // Track if we're using MediaRecorder fallback (for iOS)
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  function appendTranscript(transcript) {
+    const clean = transcript.trim();
+    if (!clean) return;
+    setText((current) => {
+      const next = (current ? current + '\n' : '') + clean;
+      textRef.current = next;
+      return next;
+    });
+    setInterim('');
+  }
 
   function startRecording() {
     setCaptureMode('recording');
@@ -202,7 +200,13 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
           if (e.results[i].isFinal) final += tr;
           else interimT += tr;
         }
-        if (final) setText((t) => (t + final).trimStart());
+        if (final) {
+          setText((t) => {
+            const next = (t + final).trimStart();
+            textRef.current = next;
+            return next;
+          });
+        }
         setInterim(interimT);
       };
       r.onerror = (e) => console.warn('语音识别错误:', e.error);
@@ -210,16 +214,26 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       try { r.start(); } catch {}
       recRef.current = r;
     } else {
-      // Fallback: use MediaRecorder to capture audio for Whisper upload
-      showToast('正在录音 · 结束后将尝试转写');
-      audioChunksRef.current = [];
+      showToast('正在录音 · 会持续转写');
+      setInterim('正在听你说…');
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        const mr = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-        mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-        mr.start();
-        mediaRecorderRef.current = mr;
+        const transcriber = createChunkedTranscriber({
+          stream,
+          transcribe: transcribeViaWorkersAI,
+          onTranscript: appendTranscript,
+          onStatus: (status) => {
+            if (status === 'transcribing') setInterim('正在转写上一段…');
+            if (status === 'stopped') setInterim('');
+          },
+          onError: (error) => {
+            console.warn('[capture] 分段转写失败:', error.message);
+          },
+        });
+        chunkedTranscriberRef.current = transcriber;
+        transcriber.start();
       }).catch(() => {
         showToast('无法访问麦克风');
+        setInterim('');
         setCaptureMode('idle');
       });
     }
@@ -231,32 +245,20 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       recRef.current = null;
     }
 
-    // MediaRecorder fallback → Whisper
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      const mr = mediaRecorderRef.current;
-      const chunks = audioChunksRef.current;
-      await new Promise((r) => {
-        mr.onstop = r;
-        mr.stop();
-        mr.stream.getTracks().forEach((t) => t.stop());
-      });
-      mediaRecorderRef.current = null;
-
-      if (chunks.length > 0) {
-        setInterim('正在转写…');
-        try {
-          const blob = new Blob(chunks, { type: 'audio/webm' });
-          const transcript = await transcribeViaWorkersAI(blob);
-          setText((t) => (t ? t + '\n' : '') + transcript);
-          showToast('转写完成');
-        } catch {
-          showToast('转写失败 · 请手动输入');
-        }
+    if (chunkedTranscriberRef.current) {
+      const transcriber = chunkedTranscriberRef.current;
+      chunkedTranscriberRef.current = null;
+      setInterim('正在完成转写…');
+      try {
+        const result = await transcriber.stop();
+        showToast(result.errorCount ? '部分转写失败 · 可继续手动补充' : '转写完成');
+      } catch {
+        showToast('转写失败 · 请手动输入');
       }
     }
 
     setInterim('');
-    setCaptureMode(text.trim() ? 'text' : 'idle', { focusText: Boolean(text.trim()) });
+    setCaptureMode(textRef.current.trim() ? 'text' : 'idle', { focusText: Boolean(textRef.current.trim()) });
   }
 
   function cancelRecording() {
@@ -264,14 +266,10 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       try { recRef.current.stop(); } catch {}
       recRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-      } catch {}
-      mediaRecorderRef.current = null;
+    if (chunkedTranscriberRef.current) {
+      chunkedTranscriberRef.current.stop({ cancel: true }).catch(() => {});
+      chunkedTranscriberRef.current = null;
     }
-    audioChunksRef.current = [];
     setInterim('');
     setCaptureMode('idle');
   }
@@ -340,6 +338,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       duration: dur,
     });
     setText('');
+    textRef.current = '';
     setInterim('');
     setPhotoData(null);
     setFullEditor(false);

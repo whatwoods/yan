@@ -8,6 +8,7 @@ const syncSettingsSource = readFileSync(new URL('../src/screen-settings-sync.jsx
 const storeSource = readFileSync(new URL('../src/store.jsx', import.meta.url), 'utf8');
 const syncSource = readFileSync(new URL('../src/sync.js', import.meta.url), 'utf8');
 const captureSource = readFileSync(new URL('../src/screen-capture.jsx', import.meta.url), 'utf8');
+const audioTranscriptionSource = readFileSync(new URL('../src/audio-transcription.js', import.meta.url), 'utf8');
 
 test('AI test persists the normalized provider endpoint used for the request', () => {
   assert.match(aiSettingsSource, /const updated = \{ \.\.\.aiConfig, endpoint, models,/);
@@ -35,7 +36,10 @@ test('background AI processing only runs when AI is configured', () => {
 });
 
 test('audio fallback uses only the same-origin Workers AI transcription endpoint', () => {
-  assert.match(captureSource, /fetch\('\/api\/transcribe'/);
+  assert.match(captureSource, /createChunkedTranscriber/);
+  assert.match(audioTranscriptionSource, /fetchImpl\('\/api\/transcribe'/);
   assert.doesNotMatch(captureSource, /\/v1\/audio\/transcriptions/);
+  assert.doesNotMatch(audioTranscriptionSource, /\/v1\/audio\/transcriptions/);
   assert.doesNotMatch(captureSource, /transcribeViaOpenAICompatible/);
+  assert.doesNotMatch(captureSource, /mediaRecorderRef|audioChunksRef/);
 });

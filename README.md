@@ -4,7 +4,7 @@
 
 ## 当前能力
 
-- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音优先使用 Web Speech API，缺失时走同源 `/api/transcribe` 的 Cloudflare Workers AI 转写；长文本可进入全屏落笔，并支持列表自动编号续写。
+- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音优先使用 Web Speech API，缺失时走同源 `/api/transcribe` 的 Cloudflare Workers AI 分段转写；长文本可进入全屏落笔，并支持列表自动编号续写。
 - **自动整理**：保存后先本地生成标题、标签、人物线索和摘要；配置 AI 后可执行分类、取标题、打标签、摘要生成和人物提取，并按任务分配不同模型。
 - **笔记本视图**：按时间线浏览，支持置顶、分类筛选、上下文标签筛选、全文搜索、标签管理、卡片密度切换、100 条以上虚拟列表、下拉同步、左滑钉住/删除和长按菜单。
 - **详情编辑**：详情页支持 Markdown 渲染、分类切换、相关笔记、全屏编辑、左右滑动翻页、软删除和回收站恢复。
@@ -93,7 +93,7 @@ Cloudflare 代理默认只允许 `https:` WebDAV 目标，并拒绝 localhost、
 
 ### Cloudflare Workers AI 转写
 
-没有 Web Speech API 的浏览器会用 MediaRecorder 录制 `audio/webm`，停止录音后把整段音频 POST 到同源 `/api/transcribe`。Cloudflare Pages Function 读取音频后调用 `context.env.AI.run('@cf/openai/whisper', { audio })`，返回 `{ text }` 给前端。旧的第三方音频转写兜底已经删除；如果 Pages Function 或 `AI` binding 不可用，前端会提示转写失败。
+没有 Web Speech API 的浏览器会用 MediaRecorder 录制 `audio/webm`，录音过程中按约 4.5 秒切成独立片段，连续 POST 到同源 `/api/transcribe`，并把返回文本逐段追加到输入框。停止录音时只等待最后一段完成；取消录音会停止麦克风并丢弃当前片段，不再发起转写。Cloudflare Pages Function 读取音频后调用 `context.env.AI.run('@cf/openai/whisper-large-v3-turbo', { audio, language: 'zh', vad_filter: true, condition_on_previous_text: false })`，返回 `{ text }` 给前端。旧的第三方音频转写兜底已经删除；如果 Pages Function 或 `AI` binding 不可用，前端会提示转写失败。
 
 Pages 项目需要在 Cloudflare 控制台添加 Workers AI binding，变量名必须是 `AI`。仓库的 `wrangler.toml` 已声明：
 
@@ -153,7 +153,7 @@ ai:
 | 长图导出 | `html2canvas` |
 | 加密 | Web Crypto API（PBKDF2 + AES-GCM） |
 | AI 协议 | OpenAI 兼容 `/v1/chat/completions` |
-| 语音转写 | Web Speech API，Cloudflare Workers AI `/api/transcribe` |
+| 语音转写 | Web Speech API，Cloudflare Workers AI 分段 `/api/transcribe` |
 | 同步 | 浏览器 fetch + 同源 WebDAV 代理 |
 | PWA | Web App Manifest + Service Worker |
 
@@ -187,6 +187,7 @@ ai:
 │   ├── filter-stats.js        # 分类/标签筛选统计
 │   ├── gestures.js            # 滑动、长按、详情翻页手势
 │   ├── sync.js                # WebDAV 同步引擎
+│   ├── audio-transcription.js # Workers AI 分段转写客户端
 │   ├── crypto.js              # 主密码和密钥加密
 │   ├── ai.js                  # BYOK AI 配置与任务调用
 │   ├── ai-tagger.js           # 规则/AI 自动整理

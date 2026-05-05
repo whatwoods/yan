@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
-const TRANSCRIBE_MODEL = '@cf/openai/whisper';
+const TRANSCRIBE_MODEL = '@cf/openai/whisper-large-v3-turbo';
 
 function json(data, init = {}) {
   return Response.json(data, {
@@ -32,6 +32,15 @@ async function readAudioFile(request) {
   return new Blob([bytes], {
     type: contentType || 'application/octet-stream',
   });
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 }
 
 export async function onRequest(context) {
@@ -66,7 +75,10 @@ export async function onRequest(context) {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const result = await env.AI.run(TRANSCRIBE_MODEL, {
-      audio: [...bytes],
+      audio: bytesToBase64(bytes),
+      language: 'zh',
+      vad_filter: true,
+      condition_on_previous_text: false,
     });
 
     return json({
