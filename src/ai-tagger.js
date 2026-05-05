@@ -119,3 +119,8 @@ export function askYan(question, notes) {
     refs: matched.map((n) => ({ id: n.id, title: n.title, when: formatRelative(n.createdAt) })),
   };
 }
+
+export async function regenerateSummary(noteId, body) {
+  const summary = await generateSummary(body);
+  return summary ? { summary, generated_at: new Date().toISOString() } : null;
+}

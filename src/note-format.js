@@ -74,8 +74,21 @@ export function serialize(note) {
   }
 
   // Only include ai block if it has content
-  if (note.ai?.summary) {
-    fm.ai = { summary: note.ai.summary, generated_at: note.ai.generated_at, model: note.ai.model || 'unknown' };
+  if (note.ai?.summary || note.organized) {
+    fm.ai = {};
+    if (note.ai?.summary) {
+      fm.ai.summary = note.ai.summary;
+      fm.ai.generated_at = note.ai.generated_at;
+      fm.ai.model = note.ai.model || 'unknown';
+    }
+    if (note.organized) {
+      fm.ai.organized = {
+        tier: note.organized.tier,
+        at: note.organized.at,
+        model: note.organized.model,
+        original: note.organized.original,
+      };
+    }
   }
 
   return toYAML(fm) + '\n' + (note.body || '');
@@ -116,6 +129,7 @@ export function deserialize(md, filePath) {
     body: content.trim(),
     summary: data.ai?.summary || data.summary || '',
     ai: data.ai || null,
+    organized: data.ai?.organized || null,
     attachments: data.attachments || [],
     photo: data.photo || null,
     deleted_at: data.deleted_at || null,

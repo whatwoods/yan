@@ -18,7 +18,14 @@ export const PROVIDERS = [
 ];
 
 export const TASK_LABELS = {
-  classify: '分类', tag: '打标签', summarize: '摘要', title: '取标题', insight: '月度洞察', ask: '问砚', curator: '标签整理',
+  classify: '分类', tag: '打标签', summarize: '摘要', insight: '月度洞察', ask: '问砚', curator: '标签整理',
+  organize: 'AI 整理', restructure: 'AI 重构',
+};
+
+export const TASK_GROUPS = {
+  classify: 'simple', tag: 'simple', summarize: 'simple',
+  organize: 'normal', ask: 'normal',
+  restructure: 'complex', insight: 'complex', curator: 'complex',
 };
 
 // ── 砚的语气基线（所有生成型 prompt 共用）─────────────────────
@@ -67,7 +74,19 @@ export function isAIConfigured(config, assignment = {}) {
 export async function getModelAssignment() {
   return (await getMeta('modelAssignment')) || {
     classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '',
+    organize: '', restructure: '',
   };
+}
+
+export async function getModelGroupAssignment() {
+  return (await getMeta('modelGroupAssignment')) || { simple: '', normal: '', complex: '' };
+}
+
+export function resolveModel(task, config, assignment, groupAssignment) {
+  return assignment[task]
+    || groupAssignment[TASK_GROUPS[task]]
+    || config.defaultModel
+    || '';
 }
 
 export async function fetchModels(endpoint, apiKey) {
@@ -93,14 +112,15 @@ export async function fetchModels(endpoint, apiKey) {
 /**
  * @param {string} task — task key for model assignment
  * @param {Array} messages — chat messages
- * @param {object} opts — { temperature, maxTokens, jsonMode }
+ * @param {object} opts — { temperature, maxTokens, jsonMode, signal, timeout }
  */
-export async function chatCompletion(task, messages, { temperature = 0.3, maxTokens = 500, jsonMode = false, config: cachedConfig, assignment: cachedAssignment } = {}) {
+export async function chatCompletion(task, messages, { temperature = 0.3, maxTokens = 500, jsonMode = false, signal, timeout = 25_000, config: cachedConfig, assignment: cachedAssignment } = {}) {
   const config = cachedConfig || await getAIConfig();
   const assignment = cachedAssignment || await getModelAssignment();
   if (!config.apiKey || !config.endpoint) return null;
 
-  const model = assignment[task] || config.defaultModel || '';
+  const groupAssignment = await getModelGroupAssignment();
+  const model = resolveModel(task, config, assignment, groupAssignment);
   if (!model) return null;
 
   const body = { model, messages, temperature, max_tokens: maxTokens };
@@ -108,7 +128,8 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
 
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25_000);
+    if (signal) signal.addEventListener('abort', () => ctrl.abort());
+    const timer = setTimeout(() => ctrl.abort(), timeout);
     const res = await fetch(joinEndpoint(config.endpoint, '/chat/completions'), {
       method: 'POST',
       headers: {
@@ -129,7 +150,7 @@ export async function chatCompletion(task, messages, { temperature = 0.3, maxTok
       delete body.response_format;
       try {
         const ctrl2 = new AbortController();
-        const timer2 = setTimeout(() => ctrl2.abort(), 25_000);
+        const timer2 = setTimeout(() => ctrl2.abort(), timeout);
         const res2 = await fetch(joinEndpoint(config.endpoint, '/chat/completions'), {
           method: 'POST',
           headers: {
@@ -326,5 +347,92 @@ function computeMonthStats(notes) {
     topPerson,
     peakHour: peakLabel,
     tagDistribution: tagDist || '—',
+  };
+}
+
+// ── Organize / Restructure ──────────────────────────────────────
+
+const ORGANIZE_PROMPT = `${YAN_PERSONA}
+
+你的任务：清理一段文本，让它变得可读，但不改变原意。
+
+允许做的：
+1. 加上合理的标点符号（句号、逗号、问号）
+2. 按语义分段（每段 2-5 句）
+3. 删去口头禅："嗯"、"啊"、"那个"、"就是"、"然后"、"对"、"嗯嗯"、"那什么"
+4. 修正明显的同音错字（仅限语音转写常见错误，比如"在"和"再"）
+
+严禁做的：
+- 改写措辞、改变句式
+- 调换句子顺序
+- 删除任何信息（除了上面列的口头禅）
+- 合并重复内容
+- 添加原文没有的字
+- 加任何前后缀（"好的"、"整理如下"、"以下是"等一律禁止）
+- 用 markdown 围栏包裹输出
+
+如输入已经是干净的格式化文本，原样返回。
+直接输出清理后的正文，不要任何额外说明。`;
+
+const RESTRUCTURE_PROMPT = `${YAN_PERSONA}
+
+你的任务：把一段口述或草稿重写为结构化的笔记。
+
+允许做的：
+1. 抽小标题（仅当原文含 ≥ 2 个独立话题时；用 ## 二级标题）
+2. 要点改写为有序或无序列表
+3. 合并重复内容
+4. 修正明显口误
+5. 把跑题的话拉回主线（删去离题段落）
+6. 末尾可加 1 行"要点回顾"（可选，仅当原文 ≥ 300 字）
+
+严禁做的：
+- 编造任何原文没有的事实（人名、数字、时间、术语、观点）
+- 信息缺失时用"建议"、"应该"、"可能"等词补全 —— 只删不补
+- 改换原文的人称（"我"和"你"不互换）
+- 加任何前后缀（"好的"、"重构如下"、"以下是"等一律禁止）
+- 用 markdown 围栏包裹输出
+
+如输入太短（< 30 字）或本就是结构化文本，原样返回。
+直接输出重构后的 markdown 正文，不要任何额外说明。`;
+
+function cleanPrefix(text) {
+  let out = text;
+  // 剥 ```markdown ... ``` 或 ``` ... ``` 围栏
+  const fence = out.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```\s*$/);
+  if (fence) out = fence[1];
+  // 删行首常见客套
+  out = out.replace(/^(好的|当然|没问题)[，,。！!：:]?\s*/, '');
+  out = out.replace(/^整理(如下|后)?[：:]?\s*\n?/, '');
+  out = out.replace(/^以下是?(整理|重构)?(后|的)?(内容|结果|文本)?[：:]?\s*\n?/, '');
+  return out.trim();
+}
+
+export async function organizeBody(body, tier, { signal } = {}) {
+  if (!body || body.trim().length < 30) {
+    return { text: body, skipped: true };
+  }
+  const prompt = tier === 'restructure' ? RESTRUCTURE_PROMPT : ORGANIZE_PROMPT;
+  const messages = [
+    { role: 'system', content: prompt },
+    { role: 'user', content: escapeUserNote(body) },
+  ];
+  const text = await chatCompletion(tier, messages, {
+    temperature: tier === 'restructure' ? 0.3 : 0.2,
+    maxTokens: Math.max(800, body.length * 2),
+    timeout: 60_000,
+    signal,
+  });
+  if (!text) throw new Error('AI_EMPTY');
+  const cleaned = cleanPrefix(text.trim());
+  if (cleaned === body.trim()) {
+    return { text: body, skipped: true, reason: 'clean' };
+  }
+  const config = await getAIConfig();
+  const assignment = await getModelAssignment();
+  const groupAssignment = await getModelGroupAssignment();
+  return {
+    text: cleaned,
+    model: resolveModel(tier, config, assignment, groupAssignment),
   };
 }

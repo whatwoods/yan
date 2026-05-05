@@ -1,6 +1,6 @@
 // screen-detail.jsx — Single note detail with AI summary & tags.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { TOKENS, PERSONAS, formatRelative, fullDate } from './tokens.jsx';
@@ -8,6 +8,7 @@ import { ICONS } from './icons.jsx';
 import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 import { useHorizontalSwipe } from './gestures.js';
+import { organizeBody, isAIConfigured, getModelAssignment, generateSummary, getAIConfig } from './ai.js';
 
 export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPrev, onNext, prevNote, nextNote }) {
   const T = TOKENS, I = ICONS;
@@ -25,10 +26,15 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
   const firstHintShownRef = useRef(false);
   const handleAutoNumber = useAutoNumber(body, setBody);
 
+  // AI organize state
+  const [organizeSheet, setOrganizeSheet] = useState(null); // { tier, status, result, tab }
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const organizeAbortRef = useRef(null);
+
   useHorizontalSwipe(screenRef, {
     onPrev,
     onNext,
-    enabled: !editing && !isFullEditor && !showCatPicker,
+    enabled: !editing && !isFullEditor && !showCatPicker && !organizeSheet,
     threshold: 0.3,
     // Drive page-edge peek opacity via CSS variables on the stage container,
     // avoiding React re-renders on every drag frame.
@@ -44,6 +50,12 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    Promise.all([getAIConfig(), getModelAssignment()])
+      .then(([config, assignment]) => setAiConfigured(isAIConfigured(config, assignment)))
+      .catch(() => {});
   }, []);
 
   // Reset scroll position when navigating between notes via swipe.
@@ -84,6 +96,101 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
     setEditing(false);
     showToast('已收');
   }
+
+  // AI organize handlers
+  const handleOrganize = useCallback(async (tier) => {
+    const noteBody = note?.body?.trim();
+    if (!noteBody) {
+      showToast('笔记无内容');
+      return;
+    }
+    const config = await getAIConfig();
+    const assignment = await getModelAssignment();
+    if (!isAIConfigured(config, assignment)) {
+      showToast('请先在设置里配 AI');
+      return;
+    }
+
+    // Abort any in-flight request before starting a new one
+    organizeAbortRef.current?.abort();
+    setOrganizeSheet({ tier, status: 'loading', result: null, tab: 'organized' });
+    const ctrl = new AbortController();
+    organizeAbortRef.current = ctrl;
+
+    try {
+      const result = await organizeBody(noteBody, tier, { signal: ctrl.signal });
+      if (result.skipped) {
+        setOrganizeSheet({ tier, status: 'ready', result: { text: noteBody, skipped: true, reason: result.reason }, tab: 'organized' });
+      } else {
+        setOrganizeSheet({ tier, status: 'ready', result, tab: 'organized' });
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        setOrganizeSheet(null);
+        return;
+      }
+      setOrganizeSheet({ tier, status: 'error', result: null, tab: 'organized' });
+    }
+  }, [note]);
+
+  // Cleanup: abort pending request on unmount
+  useEffect(() => () => organizeAbortRef.current?.abort(), []);
+
+  const handleOrganizeClose = useCallback(() => {
+    organizeAbortRef.current?.abort();
+    setOrganizeSheet(null);
+  }, []);
+
+  const handleOrganizeRegenerate = useCallback(() => {
+    if (organizeSheet) handleOrganize(organizeSheet.tier);
+  }, [organizeSheet, handleOrganize]);
+
+  const handleOrganizeApply = useCallback(() => {
+    if (!organizeSheet?.result?.text) return;
+    // Skipped state: no side effects, just close
+    if (organizeSheet.result.skipped) {
+      setOrganizeSheet(null);
+      return;
+    }
+    const oldBody = note.body;
+    const newBody = organizeSheet.result.text;
+    const patch = { body: newBody };
+    if (!note.organized) {
+      patch.organized = {
+        tier: organizeSheet.tier,
+        at: new Date().toISOString(),
+        model: organizeSheet.result.model || 'unknown',
+        original: oldBody,
+      };
+    } else {
+      patch.organized = {
+        ...note.organized,
+        tier: organizeSheet.tier,
+        at: new Date().toISOString(),
+        model: organizeSheet.result.model || 'unknown',
+      };
+    }
+    onUpdate(note.id, patch);
+    setOrganizeSheet(null);
+    showToast('已采用整理版');
+    // Re-generate summary async
+    // Re-generate summary async
+    generateSummary(newBody).then(summary => {
+      if (summary) onUpdate(note.id, {
+        summary,
+        ai: { ...(note.ai || {}), summary, generated_at: new Date().toISOString() },
+      });
+    }).catch(() => {});
+  }, [note, organizeSheet, onUpdate]);
+
+  const handleRestoreOriginal = useCallback(() => {
+    if (!note.organized?.original) return;
+    onUpdate(note.id, {
+      body: note.organized.original,
+      organized: null,
+    });
+    showToast('已还原');
+  }, [note, onUpdate]);
 
   function togglePin() {
     onUpdate(note.id, { pinned: !note.pinned });
@@ -137,6 +244,13 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
               <button onClick={() => { setEditing(true); setShowMore(false); }} style={menuItem(T)}>
                 <I.pen size={14} /> 编辑
               </button>
+              <OrganizeMenuItems
+                note={note}
+                onOrganize={(tier) => { handleOrganize(tier); setShowMore(false); }}
+                onRestore={() => { handleRestoreOriginal(); setShowMore(false); }}
+                disabled={!!organizeSheet}
+                aiConfigured={aiConfigured}
+              />
               <button onClick={() => { handleDelete(); setShowMore(false); }} style={{ ...menuItem(T), color: 'var(--seal)' }}>
                 <I.trash size={14} /> 删除
               </button>
@@ -388,6 +502,21 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
           </div>
         </>
       )}
+
+      {/* Organize sheet */}
+      {organizeSheet && (
+        <OrganizeSheet
+          tier={organizeSheet.tier}
+          status={organizeSheet.status}
+          result={organizeSheet.result}
+          tab={organizeSheet.tab}
+          noteBody={note.body}
+          onClose={handleOrganizeClose}
+          onTabChange={(tab) => setOrganizeSheet(prev => prev ? { ...prev, tab } : null)}
+          onRegenerate={handleOrganizeRegenerate}
+          onApply={handleOrganizeApply}
+        />
+      )}
     </div>
   );
 }
@@ -419,4 +548,184 @@ function menuItem(T) {
     display: 'flex', alignItems: 'center', gap: 8,
     cursor: 'pointer', textAlign: 'left',
   };
+}
+
+function OrganizeMenuItems({ note, onOrganize, onRestore, disabled, aiConfigured }) {
+  const T = TOKENS, I = ICONS;
+  const hasBody = note?.body?.trim();
+  const hasOrganized = !!note?.organized;
+  const canOrganize = hasBody && aiConfigured && !disabled;
+
+  return (
+    <>
+      <button
+        onClick={() => canOrganize && onOrganize('organize')}
+        disabled={!canOrganize}
+        style={{
+          ...menuItem(T),
+          opacity: canOrganize ? 1 : 0.4,
+          cursor: canOrganize ? 'pointer' : 'default',
+        }}
+      >
+        <I.sparkle size={14} /> AI 整理
+      </button>
+      <button
+        onClick={() => canOrganize && onOrganize('restructure')}
+        disabled={!canOrganize}
+        style={{
+          ...menuItem(T),
+          opacity: canOrganize ? 1 : 0.4,
+          cursor: canOrganize ? 'pointer' : 'default',
+        }}
+      >
+        <I.sparkle size={14} /> AI 重构
+      </button>
+      {hasOrganized && (
+        <button onClick={onRestore} style={menuItem(T)}>
+          <I.back size={14} /> 还原原文
+        </button>
+      )}
+    </>
+  );
+}
+
+function OrganizeSheet({ tier, status, result, tab, noteBody, onClose, onTabChange, onRegenerate, onApply }) {
+  const T = TOKENS, I = ICONS;
+  const tierLabel = tier === 'restructure' ? 'AI 重构' : 'AI 整理';
+
+  return (
+    <>
+      <div className="sheet-mask" onClick={onClose} />
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={tierLabel}
+        style={{ height: 'auto', maxHeight: '60vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="sheet-grip" />
+
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 24px 12px', borderBottom: `1px solid var(--fold)`,
+        }}>
+          <span style={{
+            fontSize: 14, fontWeight: 600, color: 'var(--ink)',
+            fontFamily: T.fontSerif,
+          }}>{tierLabel}</span>
+          <button className="icon-btn" onClick={onClose} aria-label="关闭">
+            <I.close size={18} />
+          </button>
+        </div>
+
+        {/* Segmented toggle */}
+        {status === 'ready' && !result?.skipped && (
+          <div style={{
+            display: 'flex', padding: '12px 24px', gap: 2,
+            background: 'var(--paper-light)', borderBottom: `1px solid var(--fold)`,
+          }}>
+            <button
+              onClick={() => onTabChange('organized')}
+              style={{
+                flex: 1, padding: '8px 0', border: 'none', borderRadius: '8px 0 0 8px',
+                background: tab === 'organized' ? 'var(--ink)' : 'transparent',
+                color: tab === 'organized' ? 'var(--paper)' : 'var(--ink-soft)',
+                fontFamily: T.fontSerif, fontSize: 13, cursor: 'pointer',
+              }}
+            >整理版</button>
+            <button
+              onClick={() => onTabChange('original')}
+              style={{
+                flex: 1, padding: '8px 0', border: 'none', borderRadius: '0 8px 8px 0',
+                background: tab === 'original' ? 'var(--ink)' : 'transparent',
+                color: tab === 'original' ? 'var(--paper)' : 'var(--ink-soft)',
+                fontFamily: T.fontSerif, fontSize: 13, cursor: 'pointer',
+              }}
+            >原文</button>
+          </div>
+        )}
+
+        {/* Body */}
+        <div style={{
+          flex: 1, overflow: 'auto', padding: '16px 24px',
+          maxHeight: '60vh',
+        }}>
+          {status === 'loading' && (
+            <div style={{
+              textAlign: 'center', padding: '40px 0',
+              color: 'var(--ink-mute)', fontFamily: T.fontSerif,
+            }}>
+              <div style={{ marginBottom: 8 }}>砚正在整理…</div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                <span className="dot-pulse" style={{ animationDelay: '0s' }}>·</span>
+                <span className="dot-pulse" style={{ animationDelay: '0.2s' }}>·</span>
+                <span className="dot-pulse" style={{ animationDelay: '0.4s' }}>·</span>
+              </div>
+            </div>
+          )}
+          {status === 'error' && (
+            <div style={{
+              textAlign: 'center', padding: '40px 0',
+              color: 'var(--seal)', fontFamily: T.fontSerif,
+            }}>
+              整理失败 · 请检查网络或 AI 配置
+            </div>
+          )}
+          {status === 'ready' && result?.skipped && (
+            <>
+              <div style={{
+                textAlign: 'center', padding: '10px 0',
+                color: 'var(--ink-mute)', fontFamily: T.fontSerif, fontSize: 13,
+              }}>
+                {result?.reason === 'clean' ? '砚觉得已经足够干净了' : '内容已足够简短，无需整理'}
+              </div>
+              <div className="md-body"
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(marked.parse(noteBody || '')),
+                }}
+                style={{
+                  fontFamily: T.fontSerif, fontSize: 15, lineHeight: 1.8,
+                  color: 'var(--ink-soft)',
+                }}
+              />
+            </>
+          )}
+          {status === 'ready' && !result?.skipped && (
+            <div className="md-body"
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(
+                  marked.parse(tab === 'organized' ? (result?.text || '') : (noteBody || ''))
+                ),
+              }}
+              style={{
+                fontFamily: T.fontSerif, fontSize: 15, lineHeight: 1.8,
+                color: 'var(--ink-soft)',
+              }}
+            />
+          )}
+        </div>
+
+        {/* Footer */}
+        {status === 'error' && (
+          <div style={{
+            display: 'flex', gap: 10, justifyContent: 'flex-end',
+            padding: '12px 24px', borderTop: `1px solid var(--fold)`,
+          }}>
+            <button className="btn-ghost" onClick={onClose}>关闭</button>
+            <button className="btn-primary" onClick={onRegenerate}>重试</button>
+          </div>
+        )}
+        {status === 'ready' && (
+          <div style={{
+            display: 'flex', gap: 10, alignItems: 'center',
+            padding: '12px 24px', borderTop: `1px solid var(--fold)`,
+          }}>
+            <button className="icon-btn" onClick={onRegenerate} aria-label="重新生成"
+              style={{ color: 'var(--ink-mute)' }}>
+              <I.refresh size={18} />
+            </button>
+            <div style={{ flex: 1 }} />
+            <button className="btn-ghost" onClick={onClose}>取消</button>
+            <button className="btn-primary" onClick={onApply}>采用</button>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }

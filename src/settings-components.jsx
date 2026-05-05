@@ -45,7 +45,7 @@ export function Section({ title, children }) {
 
 // ── Row ───────────────────────────────────────────────────────
 
-export function Row({ icon, label, value, last, onClick, accent }) {
+export function Row({ icon, label, value, last, onClick, accent, style }) {
   const T = TOKENS;
   return (
     <div onClick={onClick} style={{
@@ -53,6 +53,7 @@ export function Row({ icon, label, value, last, onClick, accent }) {
       padding: '12px 14px',
       borderBottom: last ? 'none' : `1px solid var(--fold)`,
       cursor: onClick ? 'pointer' : 'default',
+      ...style,
     }}>
       <div style={{
         width: 28, height: 28, borderRadius: 7,

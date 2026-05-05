@@ -6,7 +6,7 @@ import { ICONS } from './icons.jsx';
 import { showToast } from './components.jsx';
 import { getMeta, setMeta } from './db.js';
 import { SecretsStore } from './crypto.js';
-import { PROVIDERS, TASK_LABELS, fetchModels as aiFetchModels, getModelAssignment, isAIConfigured } from './ai.js';
+import { PROVIDERS, TASK_LABELS, TASK_GROUPS, fetchModels as aiFetchModels, getModelAssignment, getModelGroupAssignment, isAIConfigured } from './ai.js';
 import { Section, Row, PickerSheet, SubScrHead, inputStyle } from './settings-components.jsx';
 import { UnlockSheet } from './settings-security.jsx';
 
@@ -16,7 +16,9 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
   const [aiConfig, setAiConfig] = useState({ provider: 'deepseek', endpoint: '', apiKey: '', models: [], defaultModel: '' });
   const [aiTesting, setAiTesting] = useState(false);
   const [aiModels, setAiModels] = useState([]);
-  const [modelAssignment, setModelAssignment] = useState({ classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '' });
+  const [modelAssignment, setModelAssignment] = useState({ classify: '', tag: '', summarize: '', insight: '', ask: '', curator: '', organize: '', restructure: '' });
+  const [modelGroupAssignment, setModelGroupAssignment] = useState({ simple: '', normal: '', complex: '' });
+  const [expandedGroups, setExpandedGroups] = useState({});
   const [showProviderPicker, setShowProviderPicker] = useState(false);
   const [showDefaultModelPicker, setShowDefaultModelPicker] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(null);
@@ -27,9 +29,10 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
   useEffect(() => {
     (async () => {
       try {
-        const [savedAi, savedAssignment, hasPw] = await Promise.all([
+        const [savedAi, savedAssignment, savedGroupAssignment, hasPw] = await Promise.all([
           getMeta('aiConfig'),
           getModelAssignment(),
+          getModelGroupAssignment(),
           SecretsStore.isSetup(),
         ]);
         if (hasPw) {
@@ -43,6 +46,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
           onAIConfigChange?.(hydrated, savedAssignment);
         }
         if (savedAssignment) setModelAssignment(savedAssignment);
+        if (savedGroupAssignment) setModelGroupAssignment(savedGroupAssignment);
       } catch {}
     })();
   }, []);
@@ -161,16 +165,62 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
             </Section>
 
             {aiModels.length > 0 && (
-              <Section title="任务模型分配">
-                {Object.entries(TASK_LABELS).map(([key, label], idx, arr) => (
-                  <Row key={key}
-                    icon={<span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{label[0]}</span>}
-                    label={label}
-                    value={modelAssignment[key] || aiConfig.defaultModel || '默认'}
-                    onClick={() => setShowModelPicker(key)}
-                    last={idx === arr.length - 1} />
-                ))}
-              </Section>
+              <>
+                {['simple', 'normal', 'complex'].map((groupKey, groupIdx) => {
+                  const groupLabels = { simple: '简单任务', normal: '普通任务', complex: '复杂任务' };
+                  const groupHints = {
+                    simple: '分类 / 打标签 / 摘要',
+                    normal: 'AI 整理 / 问砚',
+                    complex: 'AI 重构 / 月度洞察 / 标签整理',
+                  };
+                  const tasksInGroup = Object.entries(TASK_GROUPS)
+                    .filter(([, g]) => g === groupKey)
+                    .map(([task]) => task);
+                  const isExpanded = expandedGroups[groupKey];
+                  const isLastGroup = groupIdx === 2;
+
+                  return (
+                    <Section key={groupKey} title={groupLabels[groupKey]}>
+                      {/* Group-level model */}
+                      <Row
+                        icon={<I.sparkle size={14} />}
+                        label="组级模型"
+                        value={modelGroupAssignment[groupKey] || aiConfig.defaultModel || '未设置'}
+                        onClick={() => setShowModelPicker(`group:${groupKey}`)}
+                      />
+                      {/* Expand/collapse toggle */}
+                      <button
+                        onClick={() => setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }))}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '8px 14px', width: '100%',
+                          background: 'transparent', border: 'none',
+                          borderBottom: isExpanded ? 'none' : `1px solid var(--fold)`,
+                          fontFamily: T.fontSerif, fontSize: 12,
+                          color: 'var(--ink-mute)', cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: 10 }}>{isExpanded ? '▴' : '▾'}</span>
+                        {isExpanded ? '收起' : '详细'}
+                        <span style={{ fontSize: 11, color: 'var(--ink-fade)', marginLeft: 4 }}>
+                          {groupHints[groupKey]}
+                        </span>
+                      </button>
+                      {/* Task-level overrides (when expanded) */}
+                      {isExpanded && tasksInGroup.map(([task], idx) => (
+                        <Row key={task}
+                          icon={<span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{(TASK_LABELS[task] || task)[0]}</span>}
+                          label={TASK_LABELS[task] || task}
+                          value={modelAssignment[task] || '（继承组级）'}
+                          onClick={() => setShowModelPicker(task)}
+                          last={idx === tasksInGroup.length - 1 && isLastGroup}
+                          style={{ paddingLeft: 28 }}
+                        />
+                      ))}
+                    </Section>
+                  );
+                })}
+              </>
             )}
           </>
         )}
@@ -206,16 +256,33 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
           onClose={() => setShowDefaultModelPicker(false)} />
       )}
       {showModelPicker && (
-        <PickerSheet title={`模型 · ${TASK_LABELS[showModelPicker] || showModelPicker}`}
-          options={[
-            { value: '', label: '使用默认模型', hint: aiConfig.defaultModel || '未设置' },
-            ...aiModels.map(m => ({ value: m, label: m, hint: '' })),
-          ]}
-          current={modelAssignment[showModelPicker] || ''}
+        <PickerSheet
+          title={showModelPicker.startsWith('group:')
+            ? `组级模型 · ${({ simple: '简单任务', normal: '普通任务', complex: '复杂任务' })[showModelPicker.slice(6)] || showModelPicker}`
+            : `模型 · ${TASK_LABELS[showModelPicker] || showModelPicker}`}
+          options={showModelPicker.startsWith('group:')
+            ? [
+                { value: '', label: '使用默认模型', hint: aiConfig.defaultModel || '未设置' },
+                ...aiModels.map(m => ({ value: m, label: m, hint: '' })),
+              ]
+            : [
+                { value: '', label: '继承组级', hint: modelGroupAssignment[TASK_GROUPS[showModelPicker]] || aiConfig.defaultModel || '未设置' },
+                ...aiModels.map(m => ({ value: m, label: m, hint: '' })),
+              ]}
+          current={showModelPicker.startsWith('group:')
+            ? (modelGroupAssignment[showModelPicker.slice(6)] || '')
+            : (modelAssignment[showModelPicker] || '')}
           onSelect={(val) => {
-            const updated = { ...modelAssignment, [showModelPicker]: val };
-            setModelAssignment(updated);
-            setMeta('modelAssignment', updated);
+            if (showModelPicker.startsWith('group:')) {
+              const groupKey = showModelPicker.slice(6);
+              const updated = { ...modelGroupAssignment, [groupKey]: val };
+              setModelGroupAssignment(updated);
+              setMeta('modelGroupAssignment', updated);
+            } else {
+              const updated = { ...modelAssignment, [showModelPicker]: val };
+              setModelAssignment(updated);
+              setMeta('modelAssignment', updated);
+            }
             setShowModelPicker(null);
           }}
           onClose={() => setShowModelPicker(null)} />
