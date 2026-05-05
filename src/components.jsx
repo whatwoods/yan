@@ -1,18 +1,7 @@
-// components.jsx — Shared visual primitives: SealStamp, BrushTitle, Tag, BottomNav, Toast, KindBadge.
+// components.jsx — Shared visual primitives: BrushTitle, Tag, BottomNav, Toast, KindBadge.
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { ICONS } from './icons.jsx';
-
-export function SealStamp({ text = '砚', size = 36, rotate = -6, color }) {
-  return (
-    <div className="stamp" style={{
-      width: size, height: size, fontSize: size * 0.5,
-      transform: `rotate(${rotate}deg)`,
-      background: color || 'var(--seal)',
-      flexShrink: 0,
-    }}>{text}</div>
-  );
-}
 
 export function BrushTitle({ children, size = 26, color, style }) {
   return (

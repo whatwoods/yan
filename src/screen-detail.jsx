@@ -5,7 +5,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { TOKENS, PERSONAS, formatRelative, fullDate } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
+import { Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { autoTitle, autoSummary, autoTags, Store } from './store.jsx';
 import { useHorizontalSwipe } from './gestures.js';
 import { organizeBody, isAIConfigured, getModelAssignment, getModelGroupAssignment, generateSummary, getAIConfig } from './ai.js';
@@ -319,7 +319,7 @@ export function DetailScreen({ note, allNotes, onBack, onUpdate, onDelete, onPre
             display: 'flex', gap: 10, alignItems: 'flex-start',
             animation: 'fadeup .35s ease',
           }}>
-            <SealStamp size={26} rotate={-4} text={persona.mark} color={persona.color} />
+            <img src="/icon-192.png" alt="砚" style={{ width: 26, height: 26, borderRadius: 6, flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11, color: persona.color, fontWeight: 600, letterSpacing: '.08em', marginBottom: 3 }}>
                 {persona.name} · 一句话

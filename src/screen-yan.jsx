@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TOKENS } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, BrushTitle, Tag } from './components.jsx';
+import { BrushTitle, Tag } from './components.jsx';
 import { askYan } from './store.jsx';
 import { generateInsight, getAIConfig, getModelAssignment } from './ai.js';
 import { getMeta, setMeta } from './db.js';
@@ -47,7 +47,7 @@ export function YanScreen({ notes, persona, onNavigate }) {
       {/* Header */}
       <div className="scr-head" style={{ paddingBottom: 12, borderBottom: `1px solid var(--fold)`, background: 'var(--paper-light)', position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <SealStamp size={36} text={persona.mark} color={persona.color} />
+          <img src="/icon-192.png" alt="砚" style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0 }} />
           <div>
             <BrushTitle size={24}>{persona.name}</BrushTitle>
             <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>
@@ -107,7 +107,7 @@ export function YanScreen({ notes, persona, onNavigate }) {
               borderBottom: `1px solid var(--fold)`,
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
-              <SealStamp size={28} text={persona.mark} color={persona.color} />
+              <img src="/icon-192.png" alt="砚" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontFamily: T.fontSerif, fontSize: 16, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
                   问{persona.name}
@@ -226,10 +226,10 @@ function YanInsightBody({ notes, categories, exportRef, persona }) {
         </span>
       </div>
 
-      {/* Big seal-stamp summary */}
+      {/* 本月小结 */}
       <div className="card" style={{ borderRadius: 16, padding: 16, marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-          <SealStamp size={28} rotate={-5} text={persona.mark} color={persona.color} />
+          <img src="/icon-192.png" alt="砚" style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0 }} />
           <div style={{
             fontSize: 11, color: persona.color, fontWeight: 600,
             letterSpacing: '.1em', paddingTop: 4,

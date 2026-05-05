@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
+import { BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
 import {
   createChunkedTranscriber,
@@ -446,7 +446,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
           </div>
           <BrushTitle size={26}>记一笔</BrushTitle>
         </div>
-        <SealStamp size={36} text={persona.mark} color={persona.color} />
+        <img src="/icon-192.png" alt="砚" style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0 }} />
       </div>
 
       {/* Setup hint — first-run banner */}

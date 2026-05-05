@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { TOKENS, dayLabel, timeLabel } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
-import { SealStamp, Tag, KindBadge, ScrHead, showToast, PopoverMenu } from './components.jsx';
+import { Tag, KindBadge, ScrHead, showToast, PopoverMenu } from './components.jsx';
 import { Store } from './store.jsx';
 import { getMeta, setMeta } from './db.js';
 import { useSwipeActions, useLongPress } from './gestures.js';
@@ -674,7 +674,7 @@ function ListScreen({ notes, onOpenNote, onSearch, density = 'comfy', onDensityC
             fontFamily: T.fontSerif, color: 'var(--ink-mute)',
             marginTop: 30,
           }}>
-            <SealStamp size={50} rotate={-6} />
+            <img src="/icon-192.png" alt="砚" style={{ width: 50, height: 50, borderRadius: 10 }} />
             {hasActiveFilter ? (
               <>
                 <div style={{ marginTop: 16, fontSize: 16 }}>没有找到匹配的笔记</div>
