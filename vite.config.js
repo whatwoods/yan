@@ -2,11 +2,19 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import http from 'node:http';
 import https from 'node:https';
+import { createXfyunIatSessionPayload } from './functions/api/transcribe.js';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': '*',
   'access-control-allow-methods': 'GET, PUT, POST, DELETE, PROPFIND, MKCOL, OPTIONS',
+};
+
+const API_CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'content-type',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'cache-control': 'no-store',
 };
 
 function joinProxyPath(basePath, restPath) {
@@ -99,7 +107,57 @@ function webdavProxyPlugin() {
   };
 }
 
+function writeJson(res, statusCode, data) {
+  res.writeHead(statusCode, {
+    ...API_CORS_HEADERS,
+    'content-type': 'application/json; charset=utf-8',
+  });
+  res.end(JSON.stringify(data));
+}
+
+function createXfyunIatApiMiddleware(env = process.env) {
+  return async (req, res, next) => {
+    const url = new URL(req.url || '/', 'http://localhost');
+    if (url.pathname !== '/api/transcribe') {
+      next();
+      return;
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, API_CORS_HEADERS);
+      res.end();
+      return;
+    }
+
+    if (req.method !== 'GET') {
+      writeJson(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+
+    try {
+      writeJson(res, 200, await createXfyunIatSessionPayload(env));
+    } catch (error) {
+      writeJson(res, 503, {
+        error: 'Xunfei IAT session failed',
+        detail: error.message,
+      });
+    }
+  };
+}
+
+function xfyunIatApiPlugin() {
+  return {
+    name: 'yan-xfyun-iat-api',
+    configureServer(server) {
+      server.middlewares.use(createXfyunIatApiMiddleware());
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(createXfyunIatApiMiddleware());
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [react(), webdavProxyPlugin()],
+  plugins: [react(), webdavProxyPlugin(), xfyunIatApiPlugin()],
 });

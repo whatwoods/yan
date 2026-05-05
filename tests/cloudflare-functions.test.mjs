@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { resolveWebDAVTarget } from '../functions/dav/[[path]].js';
-import { onRequest as transcribe } from '../functions/api/transcribe.js';
+import {
+  createXfyunIatWebSocketUrl,
+  onRequest as transcribe,
+} from '../functions/api/transcribe.js';
 
 test('Cloudflare WebDAV function resolves encoded server and provider base path', () => {
   const target = resolveWebDAVTarget(
@@ -20,33 +23,47 @@ test('Cloudflare WebDAV function rejects local proxy targets', () => {
   assert.equal(target, null);
 });
 
-test('Cloudflare Workers AI transcription function runs the whisper model', async () => {
-  let call;
-  const form = new FormData();
-  form.append('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm' }), 'recording.webm');
-
+test('Cloudflare transcription function returns a signed Xunfei IAT websocket session', async () => {
   const response = await transcribe({
     request: new Request('https://notes.example.com/api/transcribe', {
-      method: 'POST',
-      body: form,
+      method: 'GET',
     }),
     env: {
-      AI: {
-        async run(model, input) {
-          call = { model, input };
-          return { text: '测试转写' };
-        },
-      },
+      XFYUN_IAT_APP_ID: 'app123',
+      XFYUN_IAT_API_KEY: 'key123',
+      XFYUN_IAT_API_SECRET: 'secret123',
     },
   });
 
   const data = await response.json();
   assert.equal(response.status, 200);
-  assert.equal(data.text, '测试转写');
-  assert.equal(data.provider, 'cloudflare-workers-ai');
-  assert.equal(call.model, '@cf/openai/whisper-large-v3-turbo');
-  assert.equal(call.input.audio, 'AQID');
-  assert.equal(call.input.language, 'zh');
-  assert.equal(call.input.vad_filter, true);
-  assert.equal(call.input.condition_on_previous_text, false);
+  assert.equal(data.provider, 'xfyun-iat');
+  assert.equal(data.appId, 'app123');
+  assert.equal(data.business.language, 'zh_cn');
+  assert.match(data.url, /^wss:\/\/iat-api\.xfyun\.cn\/v2\/iat\?/);
+  assert.match(data.url, /authorization=/);
+  assert.match(data.url, /date=/);
+  assert.match(data.url, /host=iat-api\.xfyun\.cn/);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+});
+
+test('createXfyunIatWebSocketUrl signs the fixed host date request-line string', async () => {
+  const signedUrl = await createXfyunIatWebSocketUrl({
+    apiKey: 'key123',
+    apiSecret: 'secret123',
+    now: new Date('2026-05-05T00:00:00Z'),
+  });
+  const url = new URL(signedUrl);
+  const authorization = JSON.parse(
+    Buffer.from(url.searchParams.get('authorization'), 'base64').toString('utf8')
+      .replace(/^api_key="([^"]+)",algorithm="([^"]+)",headers="([^"]+)",signature="([^"]+)"$/, '{"api_key":"$1","algorithm":"$2","headers":"$3","signature":"$4"}')
+  );
+
+  assert.equal(url.hostname, 'iat-api.xfyun.cn');
+  assert.equal(url.pathname, '/v2/iat');
+  assert.equal(url.searchParams.get('date'), 'Tue, 05 May 2026 00:00:00 GMT');
+  assert.equal(authorization.api_key, 'key123');
+  assert.equal(authorization.algorithm, 'hmac-sha256');
+  assert.equal(authorization.headers, 'host date request-line');
+  assert.match(authorization.signature, /^[A-Za-z0-9+/]+={0,2}$/);
 });

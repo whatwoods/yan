@@ -20,6 +20,14 @@ test('Vite installs the WebDAV proxy through plugin hooks', () => {
   assert.equal(typeof plugin.configurePreviewServer, 'function');
 });
 
+test('Vite installs the Xunfei IAT signing endpoint for local dev and preview', () => {
+  const plugin = flattenPlugins(viteConfig.plugins).find((item) => item.name === 'yan-xfyun-iat-api');
+
+  assert.ok(plugin, 'vite.config.js should install the yan-xfyun-iat-api plugin');
+  assert.equal(typeof plugin.configureServer, 'function');
+  assert.equal(typeof plugin.configurePreviewServer, 'function');
+});
+
 test('WebDAV proxy resolver preserves provider base paths', () => {
   const resolved = resolveWebDAVProxyRequest(
     '/dav/https%3A%2F%2Fdav.jianguoyun.com%2Fdav/yan/notes/2026/05'
