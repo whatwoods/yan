@@ -184,7 +184,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
                       {/* Group-level model */}
                       <Row
                         icon={<I.sparkle size={14} />}
-                        label="组级模型"
+                        label={`${groupLabels[groupKey]}模型`}
                         value={modelGroupAssignment[groupKey] || aiConfig.defaultModel || '未设置'}
                         onClick={() => setShowModelPicker(`group:${groupKey}`)}
                       />
@@ -207,7 +207,7 @@ export function AISettingsScreen({ onBack, settings, onSettingsChange, onAIConfi
                         </span>
                       </button>
                       {/* Task-level overrides (when expanded) */}
-                      {isExpanded && tasksInGroup.map(([task], idx) => (
+                      {isExpanded && tasksInGroup.map((task, idx) => (
                         <Row key={task}
                           icon={<span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{(TASK_LABELS[task] || task)[0]}</span>}
                           label={TASK_LABELS[task] || task}
