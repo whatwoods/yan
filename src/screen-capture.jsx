@@ -33,6 +33,11 @@ async function compressPhoto(file) {
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5MB
 
+function getVisualViewportHeight() {
+  if (typeof window === 'undefined') return 720;
+  return Math.round(window.visualViewport?.height || window.innerHeight || 720);
+}
+
 export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDismissSetup, onGoSettings, autoExpand, onAutoExpanded }) {
   const persona = PERSONAS.yan;
   const T = TOKENS, I = ICONS;
@@ -48,6 +53,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
   const [isClosing, setClosing] = useState(false);
   const handleAutoNumber = useAutoNumber(text, setText);
   const [showIdleSuggestions, setShowIdleSuggestions] = useState(true);
+  const [visualViewportHeight, setVisualViewportHeight] = useState(() => getVisualViewportHeight());
 
   const taRef = useRef(null);
   const omniboxRef = useRef(null);
@@ -67,6 +73,30 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
 
   useEffect(() => {
     Store.getCategories().then(setCategories).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        setVisualViewportHeight(getVisualViewportHeight());
+      });
+    };
+
+    update();
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
   }, []);
 
   useEffect(() => {
@@ -140,10 +170,10 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     if (!ta) return;
 
     const minHeight = text.length > 180 || photoData ? 156 : 108;
-    const maxHeight = Math.min(window.innerHeight * 0.42, 340);
+    const maxHeight = Math.min(visualViewportHeight * 0.42, 340);
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(Math.max(ta.scrollHeight, minHeight), maxHeight)}px`;
-  }, [mode, text, photoData, isFullEditor]);
+  }, [mode, text, photoData, isFullEditor, visualViewportHeight]);
 
   useEffect(() => {
     if (mode !== 'text' || !focusAfterExpandRef.current || isFullEditor) return;
@@ -444,7 +474,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       )}
 
       {/* Recent capsules */}
-      <div className="scroll" style={{ flex: 1, padding: '4px 20px 0' }}>
+      <div className="scroll" style={{ flex: 1, minHeight: 0, padding: '4px 20px 0' }}>
         <div style={{ fontSize: 11, color: 'var(--ink-fade)', letterSpacing: '.12em', textTransform: 'uppercase', margin: '14px 0 8px', fontFamily: T.fontSans }}>
           方才记下
         </div>

@@ -32,21 +32,45 @@ export function App() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const appRef = useRef(null);
 
-  // ── Keyboard-aware viewport height ─────────────────────────
+  // ── Keyboard-aware visual viewport ─────────────────────────
   useEffect(() => {
-    const el = appRef.current;
-    if (!el || !window.visualViewport) return;
+    let frame = 0;
+
+    const applyViewport = () => {
+      const el = appRef.current;
+      if (!el) return;
+
+      const visualViewport = window.visualViewport;
+      const height = visualViewport ? visualViewport.height : window.innerHeight;
+      const width = visualViewport ? visualViewport.width : window.innerWidth;
+      const offsetTop = visualViewport ? visualViewport.offsetTop : 0;
+      const offsetLeft = visualViewport ? visualViewport.offsetLeft : 0;
+
+      el.style.setProperty('--app-height', `${height}px`);
+      el.style.setProperty('--app-width', `${width}px`);
+      el.style.setProperty('--app-offset-top', `${offsetTop}px`);
+      el.style.setProperty('--app-offset-left', `${offsetLeft}px`);
+    };
+
     const update = () => {
-      el.style.setProperty('--app-height', window.visualViewport.height + 'px');
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(applyViewport);
     };
-    update();
-    window.visualViewport.addEventListener('resize', update);
-    window.visualViewport.addEventListener('scroll', update);
+
+    applyViewport();
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+
     return () => {
-      window.visualViewport.removeEventListener('resize', update);
-      window.visualViewport.removeEventListener('scroll', update);
+      window.cancelAnimationFrame(frame);
+      window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
     };
-  }, []);
+  }, [loading]);
 
   // PWA install prompt
   useEffect(() => {

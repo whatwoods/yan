@@ -10,6 +10,7 @@ const syncSource = readFileSync(new URL('../src/sync.js', import.meta.url), 'utf
 const captureSource = readFileSync(new URL('../src/screen-capture.jsx', import.meta.url), 'utf8');
 const audioTranscriptionSource = readFileSync(new URL('../src/audio-transcription.js', import.meta.url), 'utf8');
 const syncServiceSource = readFileSync(new URL('../src/sync-service.js', import.meta.url), 'utf8');
+const cssSource = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
 test('AI test persists the normalized provider endpoint used for the request', () => {
   assert.match(aiSettingsSource, /const updated = \{ \.\.\.aiConfig, endpoint, models,/);
@@ -63,4 +64,21 @@ test('WebDAV sync keeps a remote index and permanent deletion tombstones', () =>
   assert.match(syncSource, /pullDeletedNotes/);
   assert.match(syncSource, /pushDeletedNotes/);
   assert.match(syncSource, /shouldKeepRemoteNote/);
+});
+
+test('home capture editor follows the mobile visual viewport when the keyboard opens', () => {
+  assert.match(appSource, /visualViewport\.offsetTop/);
+  assert.match(appSource, /visualViewport\.offsetLeft/);
+  assert.match(appSource, /--app-offset-top/);
+  assert.match(appSource, /requestAnimationFrame/);
+
+  const appRule = cssSource.match(/\.app\s*\{(?<body>[^}]+)\}/);
+  assert.ok(appRule, 'styles.css should define .app');
+  assert.match(appRule.groups.body, /width\s*:\s*var\(--app-width/);
+  assert.match(appRule.groups.body, /transform\s*:\s*translate3d\(var\(--app-offset-left/);
+
+  assert.match(captureSource, /visualViewportHeight/);
+  assert.match(captureSource, /window\.visualViewport\?\.height/);
+  assert.doesNotMatch(captureSource, /window\.innerHeight \* 0\.42/);
+  assert.match(captureSource, /minHeight:\s*0/);
 });
