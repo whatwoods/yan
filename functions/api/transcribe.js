@@ -4,17 +4,6 @@ const CORS_HEADERS = {
   'access-control-allow-methods': 'GET, OPTIONS',
 };
 
-const DEFAULT_XFYUN_IAT_ENDPOINT = 'wss://iat-api.xfyun.cn/v2/iat';
-const DEFAULT_BUSINESS = Object.freeze({
-  language: 'zh_cn',
-  domain: 'iat',
-  accent: 'mandarin',
-  eos: 10000,
-  ptt: 1,
-  nunum: 1,
-  rlang: 'zh-cn',
-});
-
 function json(data, init = {}) {
   return Response.json(data, {
     ...init,
@@ -26,95 +15,74 @@ function json(data, init = {}) {
   });
 }
 
-function textToBase64(value) {
-  const bytes = new TextEncoder().encode(value);
-  return bytesToBase64(bytes);
-}
+const GLOBAL_ENDPOINT_TEMPLATE = 'https://{region}.api.cognitive.microsoft.com/';
+const GLOBAL_TOKEN_ENDPOINT_TEMPLATE = 'https://{region}.api.cognitive.microsoft.com/sts/v1.0/issueToken';
+const CHINA_TOKEN_ENDPOINT_TEMPLATE = 'https://{region}.api.cognitive.azure.cn/sts/v1.0/issueToken';
+const AZURE_CHINA_REGIONS = new Set(['chinaeast2', 'chinanorth2', 'chinanorth3']);
+const MAX_CANDIDATE_LANGUAGES = 4;
 
-function bytesToBase64(bytes) {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
+export async function createAzureSpeechSessionPayload(env = {}) {
+  const key = env.AZURE_SPEECH_KEY;
+  const region = env.AZURE_SPEECH_REGION;
+  const cloud = env.AZURE_SPEECH_CLOUD || 'azure-china';
 
-async function hmacSha256Base64(secret, text) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(text));
-  return bytesToBase64(new Uint8Array(signature));
-}
-
-function firstEnv(env, names) {
-  for (const name of names) {
-    if (env?.[name]) return env[name];
-  }
-  return '';
-}
-
-export function readXfyunIatConfig(env = {}) {
-  return {
-    appId: firstEnv(env, ['XFYUN_IAT_APP_ID', 'XFYUN_APP_ID']),
-    apiKey: firstEnv(env, ['XFYUN_IAT_API_KEY', 'XFYUN_API_KEY']),
-    apiSecret: firstEnv(env, ['XFYUN_IAT_API_SECRET', 'XFYUN_API_SECRET']),
-    endpoint: firstEnv(env, ['XFYUN_IAT_ENDPOINT']) || DEFAULT_XFYUN_IAT_ENDPOINT,
-  };
-}
-
-function assertValidEndpoint(endpoint) {
-  const url = new URL(endpoint);
-  if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
-    throw new Error('XFYUN_IAT_ENDPOINT must use ws or wss');
-  }
-  return url;
-}
-
-export async function createXfyunIatWebSocketUrl({
-  apiKey,
-  apiSecret,
-  endpoint = DEFAULT_XFYUN_IAT_ENDPOINT,
-  now = new Date(),
-} = {}) {
-  if (!apiKey || !apiSecret) throw new Error('语音识别服务密钥未配置');
-
-  const url = assertValidEndpoint(endpoint);
-  const host = url.host;
-  const date = now.toUTCString();
-  const requestLine = `GET ${url.pathname || '/'} HTTP/1.1`;
-  const signatureOrigin = `host: ${host}\ndate: ${date}\n${requestLine}`;
-  const signature = await hmacSha256Base64(apiSecret, signatureOrigin);
-  const authorizationOrigin = `api_key="${apiKey}",algorithm="hmac-sha256",headers="host date request-line",signature="${signature}"`;
-
-  url.search = '';
-  url.searchParams.set('authorization', textToBase64(authorizationOrigin));
-  url.searchParams.set('date', date);
-  url.searchParams.set('host', host);
-  return url.toString();
-}
-
-export async function createXfyunIatSessionPayload(env = {}, options = {}) {
-  const config = readXfyunIatConfig(env);
-  if (!config.appId || !config.apiKey || !config.apiSecret) {
+  if (!key || !region) {
     throw new Error('语音识别服务凭据未配置');
   }
 
+  if (cloud !== 'azure-china' && cloud !== 'global') {
+    throw new Error('AZURE_SPEECH_CLOUD 只支持 azure-china 或 global');
+  }
+
+  if (cloud === 'azure-china' && !AZURE_CHINA_REGIONS.has(region)) {
+    throw new Error('Azure 中国区仅支持 chinaeast2、chinanorth2、chinanorth3');
+  }
+
+  if (cloud === 'azure-china' && !env.AZURE_SPEECH_ENDPOINT) {
+    throw new Error('Azure 中国区必须配置 AZURE_SPEECH_ENDPOINT');
+  }
+
+  const endpoint = env.AZURE_SPEECH_ENDPOINT
+    || GLOBAL_ENDPOINT_TEMPLATE.replace('{region}', region);
+  const language = env.AZURE_SPEECH_LANGUAGE || 'zh-CN';
+  const candidateLanguages = (env.AZURE_SPEECH_CANDIDATE_LANGUAGES || 'zh-CN,en-US')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const trueText = env.AZURE_SPEECH_TRUE_TEXT !== '0';
+
+  if (candidateLanguages.length > MAX_CANDIDATE_LANGUAGES) {
+    throw new Error(`候选语言数量不能超过 ${MAX_CANDIDATE_LANGUAGES} 个（当前 ${candidateLanguages.length} 个）`);
+  }
+
+  const tokenTemplate = cloud === 'azure-china'
+    ? CHINA_TOKEN_ENDPOINT_TEMPLATE
+    : GLOBAL_TOKEN_ENDPOINT_TEMPLATE;
+  const tokenUrl = tokenTemplate.replace('{region}', region);
+  const tokenRes = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Ocp-Apim-Subscription-Key': key },
+  });
+
+  if (!tokenRes.ok) {
+    throw new Error(`获取语音识别令牌失败 (${tokenRes.status})`);
+  }
+
+  const token = await tokenRes.text();
+
   return {
-    provider: 'xfyun-iat',
-    url: await createXfyunIatWebSocketUrl({
-      apiKey: config.apiKey,
-      apiSecret: config.apiSecret,
-      endpoint: config.endpoint,
-      now: options.now || new Date(),
-    }),
-    appId: config.appId,
-    business: DEFAULT_BUSINESS,
+    provider: 'azure-speech',
+    token,
+    cloud,
+    region,
+    endpoint,
+    language,
+    candidateLanguages,
+    features: {
+      trueText,
+      languageIdentification: 'AtStart',
+    },
+    expiresInSeconds: 540,
   };
 }
 
@@ -133,7 +101,7 @@ export async function onRequest(context) {
   }
 
   try {
-    return json(await createXfyunIatSessionPayload(env));
+    return json(await createAzureSpeechSessionPayload(env));
   } catch (error) {
     return json({
       error: '语音识别连接失败',

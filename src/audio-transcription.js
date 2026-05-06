@@ -1,105 +1,24 @@
-export const XFYUN_IAT_SAMPLE_RATE = 16000;
-export const XFYUN_IAT_FRAME_BYTES = 1280;
-export const XFYUN_IAT_AUDIO_FORMAT = 'audio/L16;rate=16000';
-export const XFYUN_IAT_ENDPOINT = 'wss://iat-api.xfyun.cn/v2/iat';
+const CJK_OR_PUNCT_END = /[一-鿿　-〿＀-￯]$/;
+const CJK_OR_PUNCT_START = /^[一-鿿　-〿＀-￯]/;
+const LIST_MARKER_END = /(?:^|\n)(?:[-*]|\d+\.) $/;
 
-export const DEFAULT_XFYUN_IAT_BUSINESS = Object.freeze({
-  language: 'zh_cn',
-  domain: 'iat',
-  accent: 'mandarin',
-  eos: 10000,
-  ptt: 1,
-  nunum: 1,
-  rlang: 'zh-cn',
-});
-
-function getGlobalScope() {
-  if (typeof window !== 'undefined') return window;
-  return globalThis;
+function needsSpace(before, after) {
+  if (CJK_OR_PUNCT_END.test(before) || CJK_OR_PUNCT_START.test(after)) return false;
+  if (LIST_MARKER_END.test(before)) return false;
+  if (before.endsWith('\n')) return false;
+  return true;
 }
 
-function toUint8Array(bytes) {
-  if (!bytes) return new Uint8Array();
-  if (bytes instanceof Uint8Array) return bytes;
-  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
-  return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
+export function appendFinalTranscript(current, next) {
+  const clean = String(next || '').trim();
+  if (!clean) return current;
+  if (!current.trim()) return clean;
+  return `${current.trimEnd()}${needsSpace(current, clean) ? ' ' : ''}${clean}`;
 }
 
-export function bytesToBase64(bytes) {
-  const raw = toUint8Array(bytes);
-  if (typeof btoa === 'function') {
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let i = 0; i < raw.length; i += chunkSize) {
-      binary += String.fromCharCode(...raw.subarray(i, i + chunkSize));
-    }
-    return btoa(binary);
-  }
-  if (typeof Buffer !== 'undefined') return Buffer.from(raw).toString('base64');
-  throw new Error('No base64 encoder is available');
-}
+const GLOBAL_STANDARD_ENDPOINT_RE = /^https:\/\/[a-z0-9-]+\.api\.cognitive\.microsoft\.com\/?$/i;
 
-function sampleToInt16(sample) {
-  const clamped = Math.max(-1, Math.min(1, sample || 0));
-  return clamped < 0
-    ? Math.round(clamped * 0x8000)
-    : Math.floor(clamped * 0x7fff);
-}
-
-export function downsampleTo16BitPCM(input, inputSampleRate, outputSampleRate = XFYUN_IAT_SAMPLE_RATE) {
-  if (!input?.length) return new Uint8Array();
-  if (!inputSampleRate || inputSampleRate <= outputSampleRate) {
-    const output = new Uint8Array(input.length * 2);
-    const view = new DataView(output.buffer);
-    input.forEach((sample, index) => view.setInt16(index * 2, sampleToInt16(sample), true));
-    return output;
-  }
-
-  const ratio = inputSampleRate / outputSampleRate;
-  const outputLength = Math.floor(input.length / ratio);
-  const output = new Uint8Array(outputLength * 2);
-  const view = new DataView(output.buffer);
-  let inputOffset = 0;
-
-  for (let outputOffset = 0; outputOffset < outputLength; outputOffset += 1) {
-    const nextInputOffset = Math.min(input.length, Math.round((outputOffset + 1) * ratio));
-    let sum = 0;
-    let count = 0;
-    for (let i = inputOffset; i < nextInputOffset; i += 1) {
-      sum += input[i];
-      count += 1;
-    }
-    view.setInt16(outputOffset * 2, sampleToInt16(sum / Math.max(1, count)), true);
-    inputOffset = nextInputOffset;
-  }
-
-  return output;
-}
-
-export function buildXfyunIatFrame({
-  status,
-  appId,
-  business = DEFAULT_XFYUN_IAT_BUSINESS,
-  audio = new Uint8Array(),
-} = {}) {
-  const frame = {
-    data: {
-      status,
-      format: XFYUN_IAT_AUDIO_FORMAT,
-      encoding: 'raw',
-      audio: bytesToBase64(audio),
-    },
-  };
-
-  if (status === 0) {
-    frame.common = { app_id: appId };
-    frame.business = business;
-  }
-
-  return JSON.stringify(frame);
-}
-
-export async function fetchXfyunIatSession({ fetchImpl = getGlobalScope().fetch } = {}) {
+export async function fetchAzureSpeechSession({ fetchImpl = globalThis.fetch } = {}) {
   if (typeof fetchImpl !== 'function') throw new Error('Fetch is not available');
   const res = await fetchImpl('/api/transcribe', {
     method: 'GET',
@@ -108,270 +27,201 @@ export async function fetchXfyunIatSession({ fetchImpl = getGlobalScope().fetch 
   if (!res.ok) throw new Error(`语音识别连接失败: ${res.status}`);
 
   const data = await res.json();
-  if (data.provider !== 'xfyun-iat' || !data.url || !data.appId) {
-    throw new Error('语音识别连接返回异常');
+  if (data.provider !== 'azure-speech') {
+    throw new Error('语音识别连接返回异常: 不支持的提供商');
+  }
+  if (!data.token || !data.region) {
+    throw new Error('语音识别连接返回异常: 缺少必要参数');
   }
   return {
     provider: data.provider,
-    url: data.url,
-    appId: data.appId,
-    business: data.business || DEFAULT_XFYUN_IAT_BUSINESS,
+    token: data.token,
+    cloud: data.cloud || 'global',
+    region: data.region,
+    endpoint: data.endpoint || `https://${data.region}.api.cognitive.microsoft.com/`,
+    language: data.language || 'zh-CN',
+    candidateLanguages: data.candidateLanguages || [],
+    features: data.features || {},
   };
 }
 
-export function extractXfyunTranscriptText(message) {
-  const result = message?.data?.result;
-  if (!result?.ws) return '';
-  return result.ws
-    .map((word) => word.cw?.[0]?.w || '')
-    .join('')
-    .trim();
+function createSpeechConfig(sdk, session) {
+  let config;
+  if (session.cloud === 'global' && GLOBAL_STANDARD_ENDPOINT_RE.test(session.endpoint)) {
+    config = sdk.SpeechConfig.fromAuthorizationToken(session.token, session.region);
+  } else {
+    config = sdk.SpeechConfig.fromEndpoint(new URL(session.endpoint), '');
+    config.authorizationToken = session.token;
+  }
+  config.speechRecognitionLanguage = session.language;
+
+  if (session.features.trueText) {
+    config.setProperty('SpeechServiceResponse_PostProcessingOption', 'TrueText');
+  }
+  return config;
 }
 
-function concatBytes(left, right) {
-  const a = toUint8Array(left);
-  const b = toUint8Array(right);
-  if (!a.length) return b;
-  if (!b.length) return a;
-  const combined = new Uint8Array(a.length + b.length);
-  combined.set(a, 0);
-  combined.set(b, a.length);
-  return combined;
-}
-
-export async function createBrowserPcmAudioInput({
-  onPcm,
-  mediaDevices = getGlobalScope().navigator?.mediaDevices,
-  AudioContextImpl = getGlobalScope().AudioContext || getGlobalScope().webkitAudioContext,
-  inputBufferSize = 4096,
-  outputSampleRate = XFYUN_IAT_SAMPLE_RATE,
-} = {}) {
-  if (typeof onPcm !== 'function') throw new Error('PCM callback is required');
-  if (!mediaDevices?.getUserMedia) throw new Error('Microphone capture is not available');
-  if (!AudioContextImpl) throw new Error('Web Audio is not available');
-
-  const stream = await mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
-  const audioContext = new AudioContextImpl();
-  await audioContext.resume?.();
-  const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(inputBufferSize, 1, 1);
-
-  processor.onaudioprocess = (event) => {
-    const input = event.inputBuffer.getChannelData(0);
-    const pcm = downsampleTo16BitPCM(input, audioContext.sampleRate, outputSampleRate);
-    if (pcm.length) onPcm(pcm);
-    event.outputBuffer?.getChannelData?.(0)?.fill?.(0);
-  };
-
-  source.connect(processor);
-  processor.connect(audioContext.destination);
-
-  return {
-    async stop() {
-      processor.disconnect?.();
-      source.disconnect?.();
-      stream.getTracks?.().forEach((track) => track.stop());
-      await audioContext.close?.();
-    },
-  };
-}
-
-export function createXfyunRealtimeTranscriber({
-  getSession = fetchXfyunIatSession,
-  WebSocketImpl = getGlobalScope().WebSocket,
-  createAudioInput = createBrowserPcmAudioInput,
-  frameBytes = XFYUN_IAT_FRAME_BYTES,
-  closeTimeoutMs = 3000,
+export function createRealtimeTranscriber({
+  fetchSession = fetchAzureSpeechSession,
+  speechSdk = null,
   onTranscript = () => {},
+  onInterim = () => {},
   onStatus = () => {},
   onError = () => {},
-  setTimeoutImpl = getGlobalScope().setTimeout?.bind(getGlobalScope()),
-  clearTimeoutImpl = getGlobalScope().clearTimeout?.bind(getGlobalScope()),
+  now = () => Date.now(),
 } = {}) {
-  if (typeof getSession !== 'function') throw new Error('Session factory is required');
-  if (!WebSocketImpl) throw new Error('WebSocket is not available');
-
-  let socket = null;
-  let session = null;
-  let audioInput = null;
+  let recognizer = null;
   let running = false;
-  let firstFrameSent = false;
-  let pcmBuffer = new Uint8Array();
+  let tokenRefreshTimer = null;
+  let currentSession = null;
+  let sdk = speechSdk;
   let errorCount = 0;
-  const closeWaiters = new Set();
-  const socketOpenState = WebSocketImpl.OPEN ?? 1;
-  const socketClosedState = WebSocketImpl.CLOSED ?? 3;
 
-  function isSocketOpen() {
-    return socket?.readyState === socketOpenState;
-  }
-
-  function notifyClose() {
-    closeWaiters.forEach((resolve) => resolve());
-    closeWaiters.clear();
-  }
-
-  function sendFrame(status, audio) {
-    if (!isSocketOpen()) return;
-    socket.send(buildXfyunIatFrame({
-      status,
-      appId: session.appId,
-      business: session.business || DEFAULT_XFYUN_IAT_BUSINESS,
-      audio,
-    }));
-    if (status === 0) firstFrameSent = true;
-  }
-
-  function flushPcm({ force = false } = {}) {
-    if (!running && !force) return;
-    while (pcmBuffer.length >= frameBytes) {
-      const chunk = pcmBuffer.subarray(0, frameBytes);
-      pcmBuffer = pcmBuffer.subarray(frameBytes);
-      sendFrame(firstFrameSent ? 1 : 0, chunk);
-    }
-    if (force && pcmBuffer.length) {
-      sendFrame(firstFrameSent ? 1 : 0, pcmBuffer);
-      pcmBuffer = new Uint8Array();
+  function clearTokenRefresh() {
+    if (tokenRefreshTimer) {
+      clearInterval(tokenRefreshTimer);
+      tokenRefreshTimer = null;
     }
   }
 
-  function handleMessage(payload) {
-    let message;
-    try {
-      message = typeof payload === 'string' ? JSON.parse(payload) : JSON.parse(payload.data);
-    } catch (error) {
-      errorCount += 1;
-      onError(error);
-      return;
-    }
-
-    if (message.code && message.code !== 0) {
-      errorCount += 1;
-      onError(new Error(`语音识别服务错误: ${message.code}`));
-      return;
-    }
-
-    const transcript = extractXfyunTranscriptText(message);
-    if (transcript) onTranscript(transcript);
-    if (message.data?.status === 2) {
-      socket?.close?.(1000, 'done');
-    }
-  }
-
-  function waitForSocketOpen() {
-    return new Promise((resolve, reject) => {
-      if (isSocketOpen()) {
-        resolve();
-        return;
-      }
-      socket.onopen = () => resolve();
-      socket.onerror = (event) => {
-        errorCount += 1;
-        reject(new Error(event?.message || '语音识别连接失败'));
-      };
-    });
-  }
-
-  function waitForSocketClose(timeoutMs) {
-    return new Promise((resolve) => {
-      if (!socket || socket.readyState === socketClosedState) {
-        resolve();
-        return;
-      }
-      const finish = () => {
-        if (timer) clearTimeoutImpl?.(timer);
-        resolve();
-      };
-      const timer = setTimeoutImpl?.(() => {
-        closeWaiters.delete(finish);
-        socket?.close?.(1000, 'timeout');
-        resolve();
-      }, timeoutMs);
-      closeWaiters.add(finish);
-    });
-  }
-
-  async function cleanupAudio() {
-    const current = audioInput;
-    audioInput = null;
-    await current?.stop?.();
-  }
-
-  return {
-    async start() {
-      if (running) return;
-      running = true;
-      firstFrameSent = false;
-      pcmBuffer = new Uint8Array();
-      errorCount = 0;
-      onStatus('connecting');
-
+  function startTokenRefresh(getRecognizer) {
+    clearTokenRefresh();
+    tokenRefreshTimer = setInterval(async () => {
       try {
-        session = await getSession();
-        socket = new WebSocketImpl(session.url);
-        socket.onmessage = (event) => handleMessage(event.data);
-        socket.onclose = notifyClose;
-        await waitForSocketOpen();
-        socket.onerror = (event) => {
-          errorCount += 1;
-          onError(new Error(event?.message || '语音识别连接失败'));
-        };
-
-        if (!running) {
-          socket.close?.(1000, 'cancelled');
-          return;
-        }
-
-        audioInput = await createAudioInput({
-          sampleRate: XFYUN_IAT_SAMPLE_RATE,
-          onPcm: (pcm) => {
-            pcmBuffer = concatBytes(pcmBuffer, pcm);
-            flushPcm();
-          },
-        });
-        onStatus('listening');
-      } catch (error) {
-        running = false;
-        await cleanupAudio();
-        socket?.close?.(1000, 'failed');
-        throw error;
+        const fresh = await fetchSession();
+        const rec = getRecognizer();
+        if (rec) rec.authorizationToken = fresh.token;
+      } catch {
+        // token refresh failures are non-fatal; the existing token may still be valid
       }
-    },
+    }, 8.5 * 60 * 1000);
+  }
 
-    async stop({ cancel = false } = {}) {
+  async function start() {
+    if (running) return;
+    running = true;
+    errorCount = 0;
+    onStatus('connecting');
+
+    try {
+      currentSession = await fetchSession();
+    } catch (err) {
       running = false;
-      await cleanupAudio();
+      onStatus('stopped');
+      throw new Error(`语音识别连接失败: ${err.message}`);
+    }
 
-      if (socket && isSocketOpen()) {
-        if (cancel) {
-          pcmBuffer = new Uint8Array();
-          socket.close?.(1000, 'cancelled');
-        } else {
-          onStatus('finishing');
-          flushPcm({ force: true });
-          if (!firstFrameSent) sendFrame(0, new Uint8Array());
-          sendFrame(2, new Uint8Array());
-          await waitForSocketClose(closeTimeoutMs);
-        }
+    if (!sdk) {
+      try {
+        sdk = await import('microsoft-cognitiveservices-speech-sdk');
+      } catch (err) {
+        running = false;
+        onStatus('stopped');
+        throw new Error(`语音识别SDK加载失败: ${err.message}`);
       }
+    }
 
-      if (!cancel && socket && socket.readyState !== socketClosedState) {
-        socket.close?.(1000, 'stopped');
+    const sdkRef = sdk;
+    const config = createSpeechConfig(sdkRef, currentSession);
+    const audioConfig = sdkRef.AudioConfig.fromDefaultMicrophoneInput();
+
+    const { candidateLanguages, features } = currentSession;
+    if (features.languageIdentification === 'AtStart' && candidateLanguages.length > 1) {
+      const autoDetectConfig = sdkRef.AutoDetectSourceLanguageConfig.fromLanguages(candidateLanguages);
+      recognizer = sdkRef.SpeechRecognizer.FromConfig(config, autoDetectConfig, audioConfig);
+    } else {
+      recognizer = new sdkRef.SpeechRecognizer(config, audioConfig);
+    }
+
+    recognizer.recognizing = (_s, e) => {
+      if (e.result.reason === sdkRef.ResultReason.RecognizingSpeech) {
+        onInterim(e.result.text);
       }
+    };
 
-      onStatus(cancel ? 'cancelled' : 'stopped');
-      return { errorCount };
-    },
+    recognizer.recognized = (_s, e) => {
+      if (e.result.reason === sdkRef.ResultReason.RecognizedSpeech) {
+        onTranscript(e.result.text, { resultType: 'final' });
+      }
+    };
 
-    isRunning() {
-      return running;
-    },
-  };
+    recognizer.canceled = (_s, e) => {
+      const details = e.errorDetails || sdkRef.CancellationReason[e.reason] || '未知错误';
+      errorCount += 1;
+      onError(new Error(`语音识别取消: ${details}`));
+      running = false;
+      clearTokenRefresh();
+      onStatus('stopped');
+    };
+
+    recognizer.sessionStopped = () => {
+      running = false;
+      clearTokenRefresh();
+      onStatus('stopped');
+    };
+
+    return new Promise((resolve, reject) => {
+      recognizer.startContinuousRecognitionAsync(
+        () => {
+          onStatus('listening');
+          startTokenRefresh(() => recognizer);
+          resolve();
+        },
+        (err) => {
+          running = false;
+          recognizer?.close?.();
+          recognizer = null;
+          onStatus('stopped');
+          reject(new Error(`语音识别启动失败: ${err}`));
+        },
+      );
+    });
+  }
+
+  function stop({ cancel = false } = {}) {
+    if (!recognizer) {
+      running = false;
+      clearTokenRefresh();
+      return Promise.resolve({ errorCount });
+    }
+
+    const rec = recognizer;
+    recognizer = null;
+    running = false;
+    clearTokenRefresh();
+
+    if (cancel) {
+      onStatus('cancelled');
+      return new Promise((resolve) => {
+        rec.stopContinuousRecognitionAsync(
+          () => { rec.close(); resolve({ errorCount }); },
+          () => { rec.close(); resolve({ errorCount }); },
+        );
+      });
+    }
+
+    onStatus('finishing');
+    return new Promise((resolve) => {
+      rec.stopContinuousRecognitionAsync(
+        () => {
+          onStatus('stopped');
+          rec.close();
+          resolve({ errorCount });
+        },
+        (err) => {
+          errorCount += 1;
+          onError(new Error(`语音识别停止失败: ${err}`));
+          onStatus('stopped');
+          rec.close();
+          resolve({ errorCount });
+        },
+      );
+    });
+  }
+
+  function isRunning() {
+    return running;
+  }
+
+  return { start, stop, isRunning };
 }

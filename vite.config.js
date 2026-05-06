@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import http from 'node:http';
 import https from 'node:https';
-import { createXfyunIatSessionPayload } from './functions/api/transcribe.js';
+import { createAzureSpeechSessionPayload } from './functions/api/transcribe.js';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -115,7 +115,7 @@ function writeJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
-function createXfyunIatApiMiddleware(env = process.env) {
+function createAzureSpeechApiMiddleware(env = process.env) {
   return async (req, res, next) => {
     const url = new URL(req.url || '/', 'http://localhost');
     if (url.pathname !== '/api/transcribe') {
@@ -135,29 +135,29 @@ function createXfyunIatApiMiddleware(env = process.env) {
     }
 
     try {
-      writeJson(res, 200, await createXfyunIatSessionPayload(env));
+      writeJson(res, 200, await createAzureSpeechSessionPayload(env));
     } catch (error) {
       writeJson(res, 503, {
-        error: 'Xunfei IAT session failed',
+        error: '语音识别连接失败',
         detail: error.message,
       });
     }
   };
 }
 
-function xfyunIatApiPlugin() {
+function azureSpeechApiPlugin() {
   return {
-    name: 'yan-xfyun-iat-api',
+    name: 'yan-azure-speech-api',
     configureServer(server) {
-      server.middlewares.use(createXfyunIatApiMiddleware());
+      server.middlewares.use(createAzureSpeechApiMiddleware());
     },
     configurePreviewServer(server) {
-      server.middlewares.use(createXfyunIatApiMiddleware());
+      server.middlewares.use(createAzureSpeechApiMiddleware());
     },
   };
 }
 
 export default defineConfig({
   base: './',
-  plugins: [react(), webdavProxyPlugin(), xfyunIatApiPlugin()],
+  plugins: [react(), webdavProxyPlugin(), azureSpeechApiPlugin()],
 });

@@ -6,7 +6,7 @@ import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
 import { ICONS } from './icons.jsx';
 import { BrushTitle, Tag, showToast, FullscreenTextEditor, useAutoNumber } from './components.jsx';
 import { Store } from './store.jsx';
-import { createXfyunRealtimeTranscriber } from './audio-transcription.js';
+import { appendFinalTranscript, createRealtimeTranscriber } from './audio-transcription.js';
 
 // Photo compression: resize to max 1920px, JPEG 85%
 async function compressPhoto(file) {
@@ -41,7 +41,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
   const [mode, setMode] = useState('idle');
   const [text, setText] = useState('');
   const [recTick, setRecTick] = useState(0);
-  const [interim, setInterim] = useState('');
+  const [recordingHint, setRecordingHint] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
   const [photoData, setPhotoData] = useState(null);
   const [recordingStart, setRecordingStart] = useState(0);
   const [recordingDuration, setRecordingDuration] = useState(null);
@@ -196,6 +197,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       window.clearTimeout(collapseTimerRef.current);
       window.clearTimeout(suggestionsTimerRef.current);
       realtimeTranscriberRef.current?.stop({ cancel: true }).catch(() => {});
+      setInterimTranscript('');
     };
   }, []);
 
@@ -210,17 +212,18 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     const clean = transcript.trim();
     if (!clean) return;
     setText((current) => {
-      const next = (current + clean).trimStart();
+      const next = appendFinalTranscript(current, clean);
       textRef.current = next;
       return next;
     });
-    setInterim('');
+    setInterimTranscript('');
   }
 
   function finishUnavailableRecording(sessionId, toastText = '语音识别不可用 · 请手动输入') {
     if (sessionId !== recordingSessionRef.current) return;
     showToast(toastText);
-    setInterim('');
+    setRecordingHint('');
+    setInterimTranscript('');
     setRecordingDuration(null);
     setCaptureMode('text', { focusText: true });
   }
@@ -231,19 +234,28 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     setCaptureMode('recording');
     setRecordingStart(Date.now());
     setRecordingDuration(null);
-    setInterim('正在连接语音识别…');
+    setRecordingHint('正在连接语音识别…');
+    setInterimTranscript('');
 
-    const transcriber = createXfyunRealtimeTranscriber({
-      onTranscript: appendTranscript,
+    const transcriber = createRealtimeTranscriber({
+      onTranscript: (transcript) => {
+        if (sessionId !== recordingSessionRef.current) return;
+        appendTranscript(transcript);
+      },
+      onInterim: (text) => {
+        if (sessionId !== recordingSessionRef.current) return;
+        setInterimTranscript(text);
+      },
       onStatus: (status) => {
         if (sessionId !== recordingSessionRef.current) return;
-        if (status === 'connecting') setInterim('正在连接语音识别…');
-        if (status === 'listening') setInterim('正在听你说…');
-        if (status === 'finishing') setInterim('正在完成转写…');
-        if (status === 'stopped' || status === 'cancelled') setInterim('');
+        if (status === 'connecting') setRecordingHint('正在连接语音识别…');
+        if (status === 'listening') setRecordingHint('');
+        if (status === 'finishing') setRecordingHint('正在完成转写…');
+        if (status === 'stopped' || status === 'cancelled') setRecordingHint('');
       },
       onError: (error) => {
         console.warn('[capture] 语音识别失败:', error.message);
+        setInterimTranscript('');
       },
     });
     realtimeTranscriberRef.current = transcriber;
@@ -268,7 +280,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     if (realtimeTranscriberRef.current) {
       const transcriber = realtimeTranscriberRef.current;
       realtimeTranscriberRef.current = null;
-      setInterim('正在完成转写…');
+      setRecordingHint('正在完成转写…');
       try {
         const result = await transcriber.stop();
         showToast(result.errorCount ? '部分转写失败 · 可继续手动补充' : '转写完成');
@@ -277,7 +289,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       }
     }
 
-    setInterim('');
+    setRecordingHint('');
+    setInterimTranscript('');
     setCaptureMode(textRef.current.trim() ? 'text' : 'idle', { focusText: Boolean(textRef.current.trim()) });
   }
 
@@ -288,7 +301,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
       realtimeTranscriberRef.current = null;
     }
     setRecordingDuration(null);
-    setInterim('');
+    setRecordingHint('');
+    setInterimTranscript('');
     setCaptureMode('idle');
   }
 
@@ -345,7 +359,7 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
   }
 
   function save() {
-    const body = (text + (interim ? ' ' + interim : '')).trim();
+    const body = text.trim();
     if (!body && !photoData) return;
     const dur = recordingDuration || (recordingStart && mode === 'recording'
       ? formatDuration(Date.now() - recordingStart) : null);
@@ -358,7 +372,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     });
     setText('');
     textRef.current = '';
-    setInterim('');
+    setRecordingHint('');
+    setInterimTranscript('');
     setPhotoData(null);
     setRecordingDuration(null);
     setFullEditor(false);
@@ -581,8 +596,8 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
               fontFamily: T.fontSerif, fontSize: 16, color: 'var(--ink-soft)', lineHeight: 1.65,
             }}>
               {text && <span style={{ color: 'var(--ink)' }}>{text}</span>}
-              {interim && <span style={{ color: 'var(--ink-fade)' }}>{(text ? ' ' : '') + interim}</span>}
-              {!text && !interim && <span style={{ color: 'var(--ink-fade)' }}>正在听你说…</span>}
+              {(recordingHint || interimTranscript) && <span style={{ color: 'var(--ink-fade)' }}>{(text ? ' ' : '') + (recordingHint || interimTranscript)}</span>}
+              {!text && !recordingHint && !interimTranscript && <span style={{ color: 'var(--ink-fade)' }}>正在听你说…</span>}
               <span style={{
                 display: 'inline-block', width: 6, height: 16, background: 'var(--seal)',
                 marginLeft: 2, verticalAlign: 'middle', animation: 'blink 1s infinite',

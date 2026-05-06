@@ -1,10 +1,10 @@
 # 砚
 
-**会思考的本地优先笔记本。** 砚是一款移动端优先的 PWA 笔记应用：随手记录文字、语音和照片，本地保存到 IndexedDB，再按需用你自己的 AI Key 做标题、分类、标签、摘要、问答和月度洞察。同步走 WebDAV，笔记以 Markdown + YAML frontmatter 形式落在你自己的存储里；语音转写统一走讯飞语音听写（流式版），部署到 Cloudflare Pages 时可用 Pages Functions 签发讯飞 WebSocket 连接。
+**会思考的本地优先笔记本。** 砚是一款移动端优先的 PWA 笔记应用：随手记录文字、语音和照片，本地保存到 IndexedDB，再按需用你自己的 AI Key 做标题、分类、标签、摘要、问答和月度洞察。同步走 WebDAV，笔记以 Markdown + YAML frontmatter 形式落在你自己的存储里；语音转写统一走 Azure AI Speech 实时识别，部署到 Cloudflare Pages 时可用 Pages Functions 签发短期 Speech token。
 
 ## 当前能力
 
-- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音会采集为 16k、16bit、单声道 PCM，并实时发送到讯飞语音听写 WebSocket；长文本可进入全屏落笔，并支持列表自动编号续写。
+- **零摩擦捕获**：首页全能输入支持文字、语音、照片和文件名备注；照片会在浏览器内压缩为 JPEG，语音通过 Azure Speech SDK 持续识别，由 SDK 自行采集麦克风音频并实时返回识别结果；长文本可进入全屏落笔，并支持列表自动编号续写。
 - **自动整理**：保存后先本地生成标题、标签、人物线索和摘要；配置 AI 后可执行分类、取标题、打标签、摘要生成和人物提取，并按任务分配不同模型。
 - **笔记本视图**：按时间线浏览，支持置顶、分类筛选、上下文标签筛选、全文搜索、标签管理、卡片密度切换、100 条以上虚拟列表、下拉同步、左滑钉住/删除和长按菜单。
 - **详情编辑**：详情页支持 Markdown 渲染、分类切换、相关笔记、全屏编辑、左右滑动翻页、软删除和回收站恢复。
@@ -31,7 +31,7 @@ npm run build
 npm run preview
 ```
 
-本地开发默认由 Vite 提供地址，通常是 `http://localhost:5173/`。生产构建输出到 `dist/`；如果要使用 WebDAV 代理或讯飞听写签名接口，部署目标需要支持 Cloudflare Pages Functions。
+本地开发默认由 Vite 提供地址，通常是 `http://localhost:5173/`。生产构建输出到 `dist/`；如果要使用 WebDAV 代理或 Azure Speech token 签发接口，部署目标需要支持 Cloudflare Pages Functions。
 
 ## 验证命令
 
@@ -47,11 +47,11 @@ node --test tests/*.test.mjs
 
 ## 运行要求
 
-- Node.js 18+。
-- 现代浏览器，需支持 IndexedDB、Web Crypto、Service Worker、Web Audio API、WebSocket 和麦克风权限。
+- Node.js 20+（Azure Speech SDK 依赖链包含要求 Node 20+ 的包）。
+- 现代浏览器，需支持 IndexedDB、Web Crypto、Service Worker、Azure Speech SDK、Web Audio API 和麦克风权限。
 - PWA、麦克风、摄像头和 Service Worker 在生产环境需要 HTTPS；`localhost` 开发环境除外。
 - AI 供应商需要允许浏览器跨域访问；WebDAV 在本地开发和 `vite preview` 下走内置同源代理，Cloudflare Pages 生产环境通过 `functions/dav/[[path]].js` 提供同等 `/dav/<encoded-server>/...` 反向代理。
-- 讯飞听写需要在运行环境配置 `XFYUN_IAT_APP_ID`、`XFYUN_IAT_API_KEY`、`XFYUN_IAT_API_SECRET`；本地 `npm run dev` / `npm run preview` 会读取同名环境变量并提供 `/api/transcribe` 签名接口。
+- Azure Speech 识别需要在运行环境配置 `AZURE_SPEECH_KEY`、`AZURE_SPEECH_REGION` 和 Azure 中国区 endpoint；本地 `npm run dev` / `npm run preview` 会读取同名环境变量并提供 `/api/transcribe` token 签发接口。
 
 ## 配置项
 
@@ -99,26 +99,38 @@ Cloudflare 代理默认只允许 `https:` WebDAV 目标，并拒绝 localhost、
 - `DAV_ALLOWED_HOSTS`：逗号分隔的允许域名列表，例如 `dav.jianguoyun.com,example.com`；不配置时允许公网 HTTPS 主机。
 - `DAV_ALLOW_INSECURE_HTTP=1`：允许代理 `http:` 目标，仅用于明确知道风险的自建环境。
 
-### 讯飞实时语音听写
+### Azure Speech 实时语音识别
 
-录音时前端通过 Web Audio API 从麦克风采集音频，降采样为讯飞要求的 `audio/L16;rate=16000`、16bit、单声道 PCM，并按 1280 字节左右的帧发送到讯飞语音听写（流式版）WebSocket。`/api/transcribe` 不再接收音频文件，只负责用服务端环境变量生成短期签名 URL，避免把 `APISecret` 打进前端包；浏览器拿到签名后直接连接 `wss://iat-api.xfyun.cn/v2/iat`，识别结果实时追加到输入框。取消录音会立即停止麦克风并关闭 WebSocket；停止录音会发送结束帧并等待最后结果。
+录音时浏览器使用 Azure Speech SDK 进行持续识别（continuous recognition），SDK 自行采集麦克风音频、管理连接并返回实时识别结果。`/api/transcribe` 负责用服务端环境变量向 Azure Speech 服务签发短期 STS token，避免把 Speech Key 打进前端包；token 默认有效期约 10 分钟，长时间录音会在 9 分钟时自动刷新。识别结果实时追加到输入框，并经过 TrueText 后处理提升可读性。取消录音会立即停止识别；停止录音会等待最终结果返回。
 
-需要在讯飞开放平台创建 WebAPI 应用并开通“语音听写（流式版）”，然后配置以下变量：
+需要在 Azure 门户创建 Speech 资源，然后配置以下变量：
 
 ```bash
-XFYUN_IAT_APP_ID=你的 AppID
-XFYUN_IAT_API_KEY=你的 APIKey
-XFYUN_IAT_API_SECRET=你的 APISecret
+AZURE_SPEECH_KEY=你的 Speech Key
+AZURE_SPEECH_CLOUD=azure-china
+AZURE_SPEECH_REGION=你的区域（chinaeast2 / chinanorth2 / chinanorth3）
+AZURE_SPEECH_ENDPOINT=你的 Azure 中国区 Speech 终结点
 ```
 
-可选变量：`XFYUN_IAT_ENDPOINT`，默认是 `wss://iat-api.xfyun.cn/v2/iat`。生产环境建议在 Cloudflare Pages 的环境变量里配置；本地 PowerShell 可在启动前设置：
+可选变量：
+
+- `AZURE_SPEECH_LANGUAGE`：主要识别语言，默认 `zh-CN`。
+- `AZURE_SPEECH_CANDIDATE_LANGUAGES`：逗号分隔的候选语言列表，用于 at-start 语言识别，默认 `zh-CN,en-US`。
+- `AZURE_SPEECH_TRUE_TEXT`：是否启用 TrueText 后处理，默认 `true`。
+
+默认按由世纪互联运营的 Azure 中国区配置，支持区域为 `chinaeast2`、`chinanorth2`、`chinanorth3`。如果使用全球 Azure，需要显式设置 `AZURE_SPEECH_CLOUD=global`；此时不配置 `AZURE_SPEECH_ENDPOINT` 时会按 `https://<region>.api.cognitive.microsoft.com/` 推导标准终结点。
+
+生产环境建议在 Cloudflare Pages 的环境变量里配置；本地 PowerShell 可在启动前设置：
 
 ```powershell
-$env:XFYUN_IAT_APP_ID='...'
-$env:XFYUN_IAT_API_KEY='...'
-$env:XFYUN_IAT_API_SECRET='...'
+$env:AZURE_SPEECH_KEY='...'
+$env:AZURE_SPEECH_CLOUD='azure-china'
+$env:AZURE_SPEECH_REGION='chinaeast2'
+$env:AZURE_SPEECH_ENDPOINT='https://chinaeast2.api.cognitive.azure.cn/'
 npm run dev
 ```
+
+> **隐私说明**：语音识别过程中，麦克风音频会实时发送到 Azure AI Speech 服务进行处理；识别完成后，只有最终文本结果保存在本地 IndexedDB，音频数据不会被持久化存储。
 
 ### 主密码
 
@@ -171,7 +183,7 @@ ai:
 | 长图导出 | `html2canvas` |
 | 加密 | Web Crypto API（PBKDF2 + AES-GCM） |
 | AI 协议 | OpenAI 兼容 `/v1/chat/completions` |
-| 语音转写 | 讯飞语音听写（流式版）WebSocket + 同源 `/api/transcribe` 签名 |
+| 语音转写 | Azure AI Speech SDK + 同源 `/api/transcribe` token 签发 |
 | 同步 | 浏览器 fetch + 同源 WebDAV 代理 |
 | PWA | Web App Manifest + Service Worker |
 
@@ -184,7 +196,7 @@ ai:
 ├── vite.config.js             # Vite 配置，base='./'
 ├── wrangler.toml              # Cloudflare Pages 配置
 ├── functions/
-│   ├── api/transcribe.js      # 讯飞听写 WebSocket 签名接口
+│   ├── api/transcribe.js      # Azure Speech token 签发接口
 │   └── dav/[[path]].js        # Cloudflare Pages WebDAV 代理
 ├── public/
 │   ├── manifest.webmanifest   # PWA manifest
@@ -205,7 +217,7 @@ ai:
 │   ├── filter-stats.js        # 分类/标签筛选统计
 │   ├── gestures.js            # 滑动、长按、详情翻页手势
 │   ├── sync.js                # WebDAV 同步引擎
-│   ├── audio-transcription.js # 讯飞实时听写客户端
+│   ├── audio-transcription.js # provider-neutral 实时转写门面 (Azure Speech SDK)
 │   ├── crypto.js              # 主密码和密钥加密
 │   ├── ai.js                  # BYOK AI 配置与任务调用
 │   ├── ai-tagger.js           # 规则/AI 自动整理
@@ -236,7 +248,7 @@ ai:
 
 ## 部署
 
-核心前端仍是静态 Vite 应用。运行 `npm run build` 后，把 `dist/` 部署到 Cloudflare Pages；WebDAV 代理和讯飞听写签名依赖仓库根目录的 `functions/`，因此生产部署建议使用 Cloudflare Pages Git 集成或 Wrangler，而不是只上传 `dist/`。
+核心前端仍是静态 Vite 应用。运行 `npm run build` 后，把 `dist/` 部署到 Cloudflare Pages；WebDAV 代理和 Azure Speech token 签发依赖仓库根目录的 `functions/`，因此生产部署建议使用 Cloudflare Pages Git 集成或 Wrangler，而不是只上传 `dist/`。
 
 注意事项：
 
@@ -244,7 +256,7 @@ ai:
 - `vite.config.js` 使用 `base: './'`，适合部署到子路径；本地开发和 `vite preview` 还会挂载 WebDAV 同源代理。
 - `index.html` 的 CSP 允许 `connect-src 'self' https:`，AI 和 WebDAV endpoint 需要使用 HTTPS。
 - 静态托管必须能正确提供 `manifest.webmanifest`、`sw.js`、PWA 图标和 `assets/*`。
-- 纯静态托管无法替第三方 WebDAV 补 CORS，也不能保护讯飞 `APISecret`。生产环境若要支持坚果云等服务和讯飞听写，需要启用 Cloudflare Pages Functions，并确保 `/dav/*` 和 `/api/transcribe` 不被 Service Worker 或 CDN 缓存。
+- 纯静态托管无法替第三方 WebDAV 补 CORS，也不能保护 Azure Speech Key。生产环境若要支持坚果云等服务和语音识别，需要启用 Cloudflare Pages Functions，并确保 `/dav/*` 和 `/api/transcribe` 不被 Service Worker 或 CDN 缓存。
 
 ## 许可
 

@@ -20,10 +20,10 @@ test('Vite installs the WebDAV proxy through plugin hooks', () => {
   assert.equal(typeof plugin.configurePreviewServer, 'function');
 });
 
-test('Vite installs the Xunfei IAT signing endpoint for local dev and preview', () => {
-  const plugin = flattenPlugins(viteConfig.plugins).find((item) => item.name === 'yan-xfyun-iat-api');
+test('Vite installs the Azure Speech token endpoint for local dev and preview', () => {
+  const plugin = flattenPlugins(viteConfig.plugins).find((item) => item.name === 'yan-azure-speech-api');
 
-  assert.ok(plugin, 'vite.config.js should install the yan-xfyun-iat-api plugin');
+  assert.ok(plugin, 'vite.config.js should install the yan-azure-speech-api plugin');
   assert.equal(typeof plugin.configureServer, 'function');
   assert.equal(typeof plugin.configurePreviewServer, 'function');
 });

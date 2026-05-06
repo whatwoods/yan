@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 const appSource = readFileSync(new URL('../src/app.jsx', import.meta.url), 'utf8');
@@ -64,18 +64,29 @@ test('background AI processing only runs when AI is configured', () => {
   assert.doesNotMatch(appSource, /settings\.autoTag/);
 });
 
-test('audio capture uses only Xunfei realtime IAT transcription', () => {
-  assert.match(captureSource, /createXfyunRealtimeTranscriber/);
-  assert.match(audioTranscriptionSource, /wss:\/\/iat-api\.xfyun\.cn\/v2\/iat/);
-  assert.match(audioTranscriptionSource, /audio\/L16;rate=16000/);
-  assert.match(audioTranscriptionSource, /fetchImpl\('\/api\/transcribe'/);
-  assert.doesNotMatch(captureSource, /SpeechRecognition|webkitSpeechRecognition/);
-  assert.doesNotMatch(captureSource, /createChunkedTranscriber|shouldFallbackFromSpeechRecognitionError|startRecorderFallback/);
-  assert.doesNotMatch(audioTranscriptionSource, /MediaRecorder|Workers AI|whisper/i);
-  assert.doesNotMatch(captureSource, /\/v1\/audio\/transcriptions/);
-  assert.doesNotMatch(audioTranscriptionSource, /\/v1\/audio\/transcriptions/);
-  assert.doesNotMatch(captureSource, /transcribeViaOpenAICompatible/);
-  assert.doesNotMatch(captureSource, /mediaRecorderRef|audioChunksRef/);
+test('audio capture uses Azure Speech via provider-neutral transcriber', () => {
+  assert.match(captureSource, /createRealtimeTranscriber/);
+  assert.doesNotMatch(captureSource, /createXfyunRealtimeTranscriber/);
+  assert.doesNotMatch(audioTranscriptionSource, /wss:\/\/iat-api\.xfyun\.cn/);
+  assert.doesNotMatch(captureSource, /microsoft-cognitiveservices-speech-sdk/);
+
+  // Security: no file in src/ should hardcode the Azure speech key
+  const srcDir = new URL('../src/', import.meta.url);
+  const srcFiles = readdirSync(srcDir).filter(f => f.endsWith('.js') || f.endsWith('.jsx'));
+  for (const file of srcFiles) {
+    const content = readFileSync(new URL(file, srcDir), 'utf8');
+    assert.doesNotMatch(
+      content,
+      /AZURE_SPEECH_KEY/,
+      `src/${file} should not contain AZURE_SPEECH_KEY`,
+    );
+  }
+});
+
+test('recording save persists only confirmed transcript text', () => {
+  assert.match(captureSource, /const body = text\.trim\(\);/);
+  assert.match(captureSource, /onTranscript: \(transcript\) => \{\s*if \(sessionId !== recordingSessionRef\.current\) return;\s*appendTranscript\(transcript\);/);
+  assert.doesNotMatch(captureSource, /const body = \(text \+ \(interimTranscript/);
 });
 
 test('note mutations queue automatic WebDAV sync work', () => {
@@ -124,7 +135,7 @@ test('recording failure rollback uses current capture mode instead of stale asyn
 test('recording failure returns to manual text input with generic user-facing errors', () => {
   assert.match(captureSource, /function finishUnavailableRecording\(sessionId, toastText = '语音识别不可用 · 请手动输入'\)/);
   assert.match(captureSource, /setCaptureMode\('text', \{ focusText: true \}\)/);
-  assert.match(captureSource, /setInterim\('正在连接语音识别…'\)/);
+  assert.match(captureSource, /setRecordingHint\('正在连接语音识别…'\)/);
   assert.match(captureSource, /console\.warn\('\[capture\] 语音识别启动失败:', error\.message\)/);
   assert.doesNotMatch(captureSource, /讯飞听写不可用|正在连接讯飞听写|无法启动讯飞听写/);
 });
