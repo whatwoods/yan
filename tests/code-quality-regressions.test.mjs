@@ -140,6 +140,14 @@ test('recording failure returns to manual text input with generic user-facing er
   assert.doesNotMatch(captureSource, /讯飞听写不可用|正在连接讯飞听写|无法启动讯飞听写/);
 });
 
+test('recording bars show waiting dots until speech recognition is listening', () => {
+  assert.match(captureSource, /const isListening = mode === 'recording' && !recordingHint;/);
+  assert.match(captureSource, /const waitingDots = Array\.from\(\{ length: 3 \}/);
+  assert.match(captureSource, /isListening \? bars\.map/);
+  assert.match(captureSource, /: waitingDots\.map/);
+  assert.match(captureSource, /const phase = \(recTick \/ 4 \+ i \* 0\.7\);/);
+});
+
 test('desktop shell sizes the app to the framed root instead of the browser viewport', () => {
   const desktopRule = cssSource.match(/@media \(min-width:\s*720px\)\s*\{(?<body>[\s\S]+?)\n\}/);
   assert.ok(desktopRule, 'styles.css should define the desktop framing media query');

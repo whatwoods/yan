@@ -1,5 +1,5 @@
 // screen-capture.jsx — Home screen. Default omnibox (per chat: 全能输入).
-// Three states: idle (small bar) → text (expanded textarea) → recording (live waveform inline).
+// Three states: idle (small bar) → text (expanded textarea) → recording (speech status inline).
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { TOKENS, PERSONAS, formatRelative } from './tokens.jsx';
@@ -381,7 +381,15 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
     cancelRecording();
   }
 
-  // Waveform bars (driven by tick)
+  // Recording bars: animated only after the speech SDK reports listening.
+  const isListening = mode === 'recording' && !recordingHint;
+  const waitingDots = Array.from({ length: 3 }, (_, i) => {
+    const phase = (recTick + i * 2) % 8;
+    return {
+      opacity: phase < 4 ? 0.35 + phase * 0.13 : 0.87 - (phase - 4) * 0.13,
+      scale: phase < 4 ? 0.82 + phase * 0.045 : 1 - (phase - 4) * 0.045,
+    };
+  });
   const bars = Array.from({ length: 22 }, (_, i) => {
     const phase = (recTick / 4 + i * 0.7);
     return 4 + Math.abs(Math.sin(phase) * 16) + Math.abs(Math.cos(phase * 1.3) * 6);
@@ -607,10 +615,19 @@ export function CaptureScreen({ notes, onSave, onOpenNote, showSetupHint, onDism
               <button className="icon-btn" onClick={cancelRecording} aria-label="取消">
                 <I.close size={18} />
               </button>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, height: 28 }}>
-                {bars.map((h, i) => (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isListening ? 2 : 7, height: 28 }}>
+                {isListening ? bars.map((h, i) => (
                   <span key={i} style={{
                     width: 2.5, height: h, background: 'var(--seal)', borderRadius: 1, opacity: .85,
+                  }} />
+                )) : waitingDots.map((dot, i) => (
+                  <span key={i} style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 999,
+                    background: 'var(--seal)',
+                    opacity: dot.opacity,
+                    transform: `scale(${dot.scale})`,
                   }} />
                 ))}
               </div>
